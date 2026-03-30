@@ -65,119 +65,112 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
-      <div className="mx-auto max-w-5xl px-6 py-20">
-        <header className="mb-12 text-center">
-          <p className="text-sm font-medium text-slate-500">OpenTrial Prototype</p>
-          <h1 className="mt-3 text-4xl font-bold tracking-tight">
-            Search clinical trials in a clinician-friendly way
-          </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-base text-slate-600">
-            Enter a disease, drug, mechanism, sponsor, or NCT number.
-          </p>
-        </header>
+      <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-6">
+        <section className="flex flex-1 flex-col items-center justify-center">
+          <div className="w-full max-w-3xl">
+            <div className="mb-10 text-center">
+              <p className="text-sm font-medium tracking-wide text-slate-500">
+                OpenTrial
+              </p>
+              <h1 className="mt-4 text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
+                Clinical trial search,
+                <br />
+                built for clinicians
+              </h1>
+              <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
+                Search ClinicalTrials.gov by condition, therapy, mechanism, sponsor,
+                or NCT number.
+              </p>
+            </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="mx-auto max-w-3xl rounded-2xl border border-slate-200 p-4 shadow-sm"
-        >
-          <label
-            htmlFor="search"
-            className="mb-2 block text-sm font-medium text-slate-700"
-          >
-            Search trials
-          </label>
-
-          <div className="flex gap-2">
-            <input
-              id="search"
-              type="text"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Try: psoriasis, Crohn disease, bimekizumab, NCT06220604"
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500"
-            />
-            <button
-              type="submit"
-              className="rounded-xl bg-slate-900 px-5 py-3 text-white hover:bg-slate-700"
+            <form
+              onSubmit={handleSubmit}
+              className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm"
             >
-              Search
-            </button>
-          </div>
-        </form>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <input
+                  id="search"
+                  type="text"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search trials..."
+                  className="h-14 w-full rounded-2xl border border-slate-200 px-5 text-base outline-none focus:border-slate-400"
+                />
+                <button
+                  type="submit"
+                  className="h-14 rounded-2xl bg-slate-900 px-6 text-base font-medium text-white transition hover:bg-slate-700"
+                >
+                  Search
+                </button>
+              </div>
+            </form>
 
-        <div className="mx-auto mt-6 flex max-w-3xl flex-wrap gap-2">
-          {quickSearches.map((term) => (
-            <button
-              key={term}
-              type="button"
-              onClick={() => {
-                setQuery(term);
-                runSearch(term);
-              }}
-              className="rounded-full border border-slate-300 px-3 py-1 text-sm hover:bg-slate-50"
-            >
-              {term}
-            </button>
-          ))}
-        </div>
-
-        {!hasSearched && (
-          <div className="mx-auto mt-10 max-w-3xl rounded-2xl border border-dashed border-slate-300 p-6 text-center text-slate-600">
-            Start by searching for a condition, therapy, or study ID.
+            {!hasSearched && (
+              <div className="mt-10 text-center text-sm text-slate-500">
+                Try a disease, drug name, mechanism, or study ID.
+              </div>
+            )}
           </div>
-        )}
+        </section>
 
         {hasSearched && (
-          <div className="mx-auto mt-8 max-w-5xl">
-            <div className="mb-4 text-sm text-slate-500">
+          <section className="mx-auto w-full max-w-4xl pb-16">
+            <div className="mb-6 border-t border-slate-200 pt-6">
               {loading ? (
-                <p>Loading trials...</p>
+                <p className="text-sm text-slate-500">Loading trials...</p>
               ) : error ? (
-                <p className="text-red-600">{error}</p>
+                <p className="text-sm text-red-600">{error}</p>
               ) : (
-                <p>
-                  Showing {trials.length} result{trials.length === 1 ? "" : "s"} for{" "}
+                <p className="text-sm text-slate-500">
+                  {trials.length} result{trials.length === 1 ? "" : "s"} for{" "}
                   <span className="font-medium text-slate-900">{lastSearched}</span>
                 </p>
               )}
             </div>
 
-            <section className="grid gap-4">
+            <div className="grid gap-4">
               {trials.map((trial) => (
                 <a
                   key={trial.id}
                   href={`https://clinicaltrials.gov/study/${trial.id}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-2xl border border-slate-200 p-5 shadow-sm transition hover:shadow-md"
+                  className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:border-slate-300 hover:shadow-md"
                 >
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-sm">
+                  <div className="mb-4 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
                       {trial.phase}
                     </span>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-sm">
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
                       {trial.status}
                     </span>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-sm">
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
                       {trial.mechanism}
                     </span>
                   </div>
 
-                  <h2 className="text-xl font-semibold">{trial.title}</h2>
-                  <p className="mt-2 text-slate-600">{trial.summary}</p>
-                  <p className="mt-4 text-sm font-medium text-slate-900">
+                  <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                    {trial.title}
+                  </h2>
+
+                  <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-600">
+                    {trial.summary}
+                  </p>
+
+                  <p className="mt-5 text-sm font-medium text-slate-900">
                     Open on ClinicalTrials.gov →
                   </p>
                 </a>
               ))}
-            </section>
+            </div>
 
             {!loading && !error && trials.length === 0 && (
-              <div className="mt-6 rounded-2xl border border-dashed border-slate-300 p-6 text-slate-600">
-                No trials matched your search. Try a broader term like psoriasis or Crohn disease.
+              <div className="mt-6 rounded-3xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">
+                No trials matched your search. Try a broader term or a different
+                spelling.
               </div>
             )}
-          </div>
+          </section>
         )}
       </div>
     </main>
