@@ -1,11 +1,15 @@
+"use client";
+
+import { useMemo, useState } from "react";
+
 type Trial = {
-  id: string
-  title: string
-  phase: string
-  status: string
-  mechanism: string
-  summary: string
-}
+  id: string;
+  title: string;
+  phase: string;
+  status: string;
+  mechanism: string;
+  summary: string;
+};
 
 const trials: Trial[] = [
   {
@@ -35,9 +39,33 @@ const trials: Trial[] = [
     summary:
       "Explores molecular changes associated with treatment response in plaque psoriasis.",
   },
-]
+];
 
 export default function HomePage() {
+  const [query, setQuery] = useState("");
+
+  const filteredTrials = useMemo(() => {
+    const lowerQuery = query.toLowerCase().trim();
+
+    if (!lowerQuery) {
+      return trials;
+    }
+
+    return trials.filter((trial) => {
+      const searchableText = [
+        trial.title,
+        trial.phase,
+        trial.status,
+        trial.mechanism,
+        trial.summary,
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return searchableText.includes(lowerQuery);
+    });
+  }, [query]);
+
   return (
     <main className="min-h-screen bg-white text-slate-900">
       <div className="mx-auto max-w-5xl px-6 py-12">
@@ -47,24 +75,50 @@ export default function HomePage() {
             Helping clinicians understand clinical trials faster
           </h1>
           <p className="mt-4 max-w-2xl text-base text-slate-600">
-            A simple prototype for exploring clinical trials in a more clinician-friendly way.
+            A simple prototype for exploring psoriasis trials in a more clinician-friendly way.
           </p>
         </header>
 
-        <div className="mb-8 rounded-2xl border border-slate-200 p-4 shadow-sm">
+        <div className="mb-4 rounded-2xl border border-slate-200 p-4 shadow-sm">
           <label htmlFor="search" className="mb-2 block text-sm font-medium text-slate-700">
             Search trials
           </label>
           <input
             id="search"
             type="text"
-            placeholder="Try: moderate-to-severe plaque psoriasis TYK2"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Try: TYK2, recruiting, phase 2, biologic"
             className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-500"
           />
         </div>
 
+        <div className="mb-8 flex flex-wrap gap-2">
+          {["Recruiting", "TYK2", "IL-23", "Biomarker", "Phase 2", "Phase 3"].map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => setQuery(tag)}
+              className="rounded-full border border-slate-300 px-3 py-1 text-sm hover:bg-slate-50"
+            >
+              {tag}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setQuery("")}
+            className="rounded-full border border-slate-300 px-3 py-1 text-sm hover:bg-slate-50"
+          >
+            Clear
+          </button>
+        </div>
+
+        <p className="mb-4 text-sm text-slate-500">
+          Showing {filteredTrials.length} trial{filteredTrials.length === 1 ? "" : "s"}
+        </p>
+
         <section className="grid gap-4">
-          {trials.map((trial) => (
+          {filteredTrials.map((trial) => (
             <a
               key={trial.id}
               href={`/trial/${trial.id}`}
@@ -82,7 +136,13 @@ export default function HomePage() {
             </a>
           ))}
         </section>
+
+        {filteredTrials.length === 0 && (
+          <div className="mt-6 rounded-2xl border border-dashed border-slate-300 p-6 text-slate-600">
+            No trials matched your search. Try TYK2, recruiting, or phase 2.
+          </div>
+        )}
       </div>
     </main>
-  )
+  );
 }
