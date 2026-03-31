@@ -21,21 +21,29 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const rawQuery = searchParams.get("q") || "psoriasis";
+    const rawPageToken = searchParams.get("pageToken") || "";
     const query = rawQuery.trim();
+    const pageToken = rawPageToken.trim();
 
     if (!query) {
       return NextResponse.json({
         query: "",
         count: 0,
+        totalCount: 0,
+        nextPageToken: null,
         trials: [],
       });
     }
 
-    const url =
+    let url =
       `https://clinicaltrials.gov/api/v2/studies` +
       `?query.term=${encodeURIComponent(query)}` +
       `&pageSize=20` +
       `&format=json`;
+
+    if (pageToken) {
+      url += `&pageToken=${encodeURIComponent(pageToken)}`;
+    }
 
     const response = await fetch(url, {
       cache: "no-store",
@@ -57,7 +65,22 @@ export async function GET(request: Request) {
     }
 
     const data = await response.json();
-    const studies = data?.studies ?? [];
+
+    const studies = Array.isArray(data?.studies) ? data.studies : [];
+
+    // Some API responses include a next page token; keep it if present.
+    const nextPageToken =
+      typeof data?.nextPageToken === "string" && data.nextPageToken.length > 0
+        ? data.nextPageToken
+        : null;
+
+    // Helpful for debugging / UI messaging.
+    const totalCount =
+      typeof data?.totalCount === "number"
+        ? data.totalCount
+        : typeof data?.totalStudies === "number"
+          ? data.totalStudies
+          : studies.length;
 
     const trials = studies.map((study: any) => {
       const protocol = study?.protocolSection ?? {};
@@ -71,11 +94,15 @@ export async function GET(request: Request) {
       const status =
         protocol?.statusModule?.overallStatus ?? "Unknown";
 
-      const phase =
-        protocol?.designModule?.phases?.join(", ") ?? "Unspecified";
+      const phase = Array.isArray(protocol?.designModule?.phases)
+        ? protocol.designModule.phases.join(", ")
+        : "Unspecified";
 
-      const interventions =
-        protocol?.armsInterventionsModule?.interventions ?? [];
+      const interventions = Array.isArray(
+        protocol?.armsInterventionsModule?.interventions
+      )
+        ? protocol.armsInterventionsModule.interventions
+        : [];
 
       const summary =
         protocol?.descriptionModule?.briefSummary ?? "No summary available.";
@@ -93,6 +120,10 @@ export async function GET(request: Request) {
     return NextResponse.json({
       query,
       count: trials.length,
+      totalCount,
+      nextPageToken,
+      // Keep this for debugging for now:
+      debugKeys: Object.keys(data ?? {}),
       trials,
     });
   } catch (error) {

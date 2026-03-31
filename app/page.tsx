@@ -24,15 +24,18 @@ export default function HomePage() {
   const [query, setQuery] = useState("");
   const [trials, setTrials] = useState<Trial[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [lastSearched, setLastSearched] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
 
   async function runSearch(searchTerm: string) {
     try {
       setLoading(true);
       setError("");
       setHasSearched(true);
+      setNextPageToken(null);
 
       const response = await fetch(
         `/api/trials?q=${encodeURIComponent(searchTerm)}`,
@@ -46,11 +49,39 @@ export default function HomePage() {
       const data = await response.json();
       setTrials(data.trials ?? []);
       setLastSearched(searchTerm);
+      setNextPageToken(data.nextPageToken ?? null);
     } catch {
       setError("Could not load trials right now.");
       setTrials([]);
+      setNextPageToken(null);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadMore() {
+    if (!nextPageToken || !lastSearched) return;
+
+    try {
+      setLoadingMore(true);
+      setError("");
+
+      const response = await fetch(
+        `/api/trials?q=${encodeURIComponent(lastSearched)}&pageToken=${encodeURIComponent(nextPageToken)}`,
+        { cache: "no-store" }
+      );
+
+      if (!response.ok) {
+        throw new Error("Load more request failed");
+      }
+
+      const data = await response.json();
+      setTrials((previous) => [...previous, ...(data.trials ?? [])]);
+      setNextPageToken(data.nextPageToken ?? null);
+    } catch {
+      setError("Could not load more trials right now.");
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -105,6 +136,22 @@ export default function HomePage() {
               </div>
             </form>
 
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+              {quickSearches.map((term) => (
+                <button
+                  key={term}
+                  type="button"
+                  onClick={() => {
+                    setQuery(term);
+                    runSearch(term);
+                  }}
+                  className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+                >
+                  {term}
+                </button>
+              ))}
+            </div>
+
             {!hasSearched && (
               <div className="mt-10 text-center text-sm text-slate-500">
                 Try a disease, drug name, mechanism, or study ID.
@@ -122,7 +169,7 @@ export default function HomePage() {
                 <p className="text-sm text-red-600">{error}</p>
               ) : (
                 <p className="text-sm text-slate-500">
-                  {trials.length} result{trials.length === 1 ? "" : "s"} for{" "}
+                  Showing {trials.length} loaded result{trials.length === 1 ? "" : "s"} for{" "}
                   <span className="font-medium text-slate-900">{lastSearched}</span>
                 </p>
               )}
@@ -166,8 +213,20 @@ export default function HomePage() {
 
             {!loading && !error && trials.length === 0 && (
               <div className="mt-6 rounded-3xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">
-                No trials matched your search. Try a broader term or a different
-                spelling.
+                No trials matched your search. Try a broader term or a different spelling.
+              </div>
+            )}
+
+            {!loading && nextPageToken && trials.length > 0 && (
+              <div className="mt-8 flex justify-center">
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-900 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {loadingMore ? "Loading more..." : "Load more results"}
+                </button>
               </div>
             )}
           </section>
