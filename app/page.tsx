@@ -1,16 +1,56 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useState } from "react";
+import Link from "next/link";
+import {
+  Button,
+  Badge,
+  Card,
+  SearchInput,
+  LoadingSpinner,
+  ErrorMessage,
+  PageHeader,
+} from "@/components/ui";
 
-type Trial = {
-  id: string;
-  title: string;
-  phase: string;
-  status: string;
-  mechanism: string;
-  summary: string;
+// ── Status / Phase helpers ────────────────────────────────────────────────────
+const STATUS_LABELS: Record<string, string> = {
+  ACTIVE_NOT_RECRUITING: "Active, Not Recruiting",
+  COMPLETED:             "Completed",
+  ENROLLING_BY_INVITATION: "Enrolling by Invitation",
+  NOT_YET_RECRUITING:    "Not Yet Recruiting",
+  RECRUITING:            "Recruiting",
+  SUSPENDED:             "Suspended",
+  TERMINATED:            "Terminated",
+  WITHDRAWN:             "Withdrawn",
 };
 
+const PHASE_LABELS: Record<string, string> = {
+  EARLY_PHASE1: "Early Phase 1",
+  PHASE1: "Phase 1",
+  PHASE2: "Phase 2",
+  PHASE3: "Phase 3",
+  PHASE4: "Phase 4",
+  NA:     "N/A",
+};
+
+function formatStatus(s: string) { return STATUS_LABELS[s] ?? s; }
+function formatPhase(p: string)  { return PHASE_LABELS[p]  ?? p; }
+
+// Maps API status string to a Badge color
+function statusColor(s: string): "green"|"gray"|"yellow"|"blue"|"red"|"orange" {
+  const map: Record<string, "green"|"gray"|"yellow"|"blue"|"red"|"orange"> = {
+    RECRUITING:            "green",
+    COMPLETED:             "gray",
+    ACTIVE_NOT_RECRUITING: "yellow",
+    NOT_YET_RECRUITING:    "blue",
+    TERMINATED:            "red",
+    SUSPENDED:             "orange",
+    WITHDRAWN:             "red",
+  };
+  return map[s] ?? "gray";
+}
+
+// ── Quick search pills ────────────────────────────────────────────────────────
 const quickSearches = [
   "psoriasis",
   "Crohn disease",
@@ -20,40 +60,49 @@ const quickSearches = [
   "NCT06220604",
 ];
 
+// ── Type ──────────────────────────────────────────────────────────────────────
+interface Trial {
+  protocolSection: {
+    identificationModule:      { nctId: string; briefTitle: string };
+    statusModule:              { overallStatus: string };
+    conditionsModule?:         { conditions?: string[] };
+    designModule?:             { phases?: string[]; enrollmentInfo?: { count: number } };
+    descriptionModule?:        { briefSummary?: string };
+    sponsorCollaboratorsModule: { leadSponsor: { name: string } };
+  };
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 export default function HomePage() {
-  const [query, setQuery] = useState("");
-  const [trials, setTrials] = useState<Trial[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState("");
-  const [lastSearched, setLastSearched] = useState("");
-  const [hasSearched, setHasSearched] = useState(false);
+  const [query, setQuery]                 = useState("");
+  const [trials, setTrials]               = useState<Trial[]>([]);
+  const [loading, setLoading]             = useState(false);
+  const [loadingMore, setLoadingMore]     = useState(false);
+  const [error, setError]                 = useState("");
+  const [lastSearched, setLastSearched]   = useState("");
+  const [hasSearched, setHasSearched]     = useState(false);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+  const [totalCount, setTotalCount]       = useState<number | null>(null);
 
-  async function runSearch(searchTerm: string) {
+  async function runSearch(term: string) {
+    setLoading(true);
+    setError("");
+    setHasSearched(true);
+    setTrials([]);
+    setNextPageToken(null);
+    setTotalCount(null);
+
     try {
-      setLoading(true);
-      setError("");
-      setHasSearched(true);
-      setNextPageToken(null);
+      const res  = await fetch(`/api/trials?q=${encodeURIComponent(term)}&pageSize=20`, { cache: "no-store" });
+      if (!res.ok) throw new Error("Search failed");
+      const data = await res.json();
 
-      const response = await fetch(
-        `/api/trials?q=${encodeURIComponent(searchTerm)}`,
-        { cache: "no-store" }
-      );
-
-      if (!response.ok) {
-        throw new Error("Search request failed");
-      }
-
-      const data = await response.json();
-      setTrials(data.trials ?? []);
-      setLastSearched(searchTerm);
+      setTrials(data.studies ?? []);
       setNextPageToken(data.nextPageToken ?? null);
+      setTotalCount(data.totalCount ?? data.studies?.length ?? 0);
+      setLastSearched(term);
     } catch {
-      setError("Could not load trials right now.");
-      setTrials([]);
-      setNextPageToken(null);
+      setError("Could not load trials right now. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -61,22 +110,15 @@ export default function HomePage() {
 
   async function loadMore() {
     if (!nextPageToken || !lastSearched) return;
+    setLoadingMore(true);
+    setError("");
 
     try {
-      setLoadingMore(true);
-      setError("");
+      const res  = await fetch(`/api/trials?q=${encodeURIComponent(lastSearched)}&pageSize=20&pageToken=${encodeURIComponent(nextPageToken)}`, { cache: "no-store" });
+      if (!res.ok) throw new Error("Load more failed");
+      const data = await res.json();
 
-      const response = await fetch(
-        `/api/trials?q=${encodeURIComponent(lastSearched)}&pageToken=${encodeURIComponent(nextPageToken)}`,
-        { cache: "no-store" }
-      );
-
-      if (!response.ok) {
-        throw new Error("Load more request failed");
-      }
-
-      const data = await response.json();
-      setTrials((previous) => [...previous, ...(data.trials ?? [])]);
+      setTrials((prev) => [...prev, ...(data.studies ?? [])]);
       setNextPageToken(data.nextPageToken ?? null);
     } catch {
       setError("Could not load more trials right now.");
@@ -85,153 +127,155 @@ export default function HomePage() {
     }
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const trimmedQuery = query.trim();
-    if (!trimmedQuery) return;
-
-    runSearch(trimmedQuery);
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (query.trim()) runSearch(query.trim());
   }
 
   return (
-    <main className="min-h-screen bg-white text-slate-900">
-      <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-6">
-        <section className="flex flex-1 flex-col items-center justify-center">
-          <div className="w-full max-w-3xl">
-            <div className="mb-10 text-center">
-              <p className="text-sm font-medium tracking-wide text-slate-500">
-                OpenTrial
-              </p>
-              <h1 className="mt-4 text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
-                Clinical trial search,
-                <br />
-                built for clinicians
-              </h1>
-              <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
-                Search ClinicalTrials.gov by condition, therapy, mechanism, sponsor,
-                or NCT number.
-              </p>
-            </div>
+    <main className="max-w-4xl mx-auto px-4 py-10">
 
-            <form
-              onSubmit={handleSubmit}
-              className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm"
-            >
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <input
-                  id="search"
-                  type="text"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search trials..."
-                  className="h-14 w-full rounded-2xl border border-slate-200 px-5 text-base outline-none focus:border-slate-400"
-                />
-                <button
-                  type="submit"
-                  className="h-14 rounded-2xl bg-slate-900 px-6 text-base font-medium text-white transition hover:bg-slate-700"
-                >
-                  Search
-                </button>
-              </div>
-            </form>
+      <PageHeader
+        title="OpenTrial"
+        subtitle="Search and explore clinical trials from ClinicalTrials.gov"
+      />
 
-            <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-              {quickSearches.map((term) => (
-                <button
-                  key={term}
-                  type="button"
-                  onClick={() => {
-                    setQuery(term);
-                    runSearch(term);
-                  }}
-                  className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
-                >
-                  {term}
-                </button>
-              ))}
-            </div>
+      {/* Search bar */}
+      <form onSubmit={handleSubmit} className="flex gap-2 mb-4">
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search by condition, drug, or NCT number..."
+        />
+        <Button type="submit" disabled={loading || !query.trim()}>
+          {loading ? "Searching…" : "Search"}
+        </Button>
+      </form>
 
-            {!hasSearched && (
-              <div className="mt-10 text-center text-sm text-slate-500">
-                Try a disease, drug name, mechanism, or study ID.
-              </div>
-            )}
-          </div>
-        </section>
-
-        {hasSearched && (
-          <section className="mx-auto w-full max-w-4xl pb-16">
-            <div className="mb-6 border-t border-slate-200 pt-6">
-              {loading ? (
-                <p className="text-sm text-slate-500">Loading trials...</p>
-              ) : error ? (
-                <p className="text-sm text-red-600">{error}</p>
-              ) : (
-                <p className="text-sm text-slate-500">
-                  Showing {trials.length} loaded result{trials.length === 1 ? "" : "s"} for{" "}
-                  <span className="font-medium text-slate-900">{lastSearched}</span>
-                </p>
-              )}
-            </div>
-
-            <div className="grid gap-4">
-              {trials.map((trial) => (
-                <a
-                  key={trial.id}
-                  href={`https://clinicaltrials.gov/study/${trial.id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:border-slate-300 hover:shadow-md"
-                >
-                  <div className="mb-4 flex flex-wrap gap-2">
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                      {trial.phase}
-                    </span>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                      {trial.status}
-                    </span>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                      {trial.mechanism}
-                    </span>
-                  </div>
-
-                  <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-                    {trial.title}
-                  </h2>
-
-                  <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-600">
-                    {trial.summary}
-                  </p>
-
-                  <p className="mt-5 text-sm font-medium text-slate-900">
-                    Open on ClinicalTrials.gov →
-                  </p>
-                </a>
-              ))}
-            </div>
-
-            {!loading && !error && trials.length === 0 && (
-              <div className="mt-6 rounded-3xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">
-                No trials matched your search. Try a broader term or a different spelling.
-              </div>
-            )}
-
-            {!loading && nextPageToken && trials.length > 0 && (
-              <div className="mt-8 flex justify-center">
-                <button
-                  type="button"
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                  className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-900 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {loadingMore ? "Loading more..." : "Load more results"}
-                </button>
-              </div>
-            )}
-          </section>
-        )}
+      {/* Quick search pills */}
+      <div className="flex flex-wrap gap-2 mb-8">
+        {quickSearches.map((term) => (
+          <Button
+            key={term}
+            variant="outline"
+            size="sm"
+            onClick={() => { setQuery(term); runSearch(term); }}
+          >
+            {term}
+          </Button>
+        ))}
       </div>
+
+      {/* Error */}
+      {error && <ErrorMessage message={error} />}
+
+      {/* Loading */}
+      {loading && <LoadingSpinner message="Searching trials…" />}
+
+      {/* Pre-search */}
+      {!hasSearched && !loading && (
+        <p className="text-center py-16 text-gray-400 text-sm">
+          Enter a condition, drug name, or NCT number above
+        </p>
+      )}
+
+      {/* No results */}
+      {!loading && hasSearched && trials.length === 0 && !error && (
+        <div className="text-center py-16">
+          <p className="text-gray-500 text-lg mb-2">No trials found</p>
+          <p className="text-gray-400 text-sm">Try a different condition, drug, or keyword</p>
+        </div>
+      )}
+
+      {/* Result count */}
+      {!loading && trials.length > 0 && totalCount !== null && (
+        <p className="text-sm text-gray-400 mb-4">
+          Showing <span className="font-medium text-gray-600">{trials.length}</span> of{" "}
+          <span className="font-medium text-gray-600">{totalCount.toLocaleString()}</span> trials
+          for <span className="font-medium text-gray-700">"{lastSearched}"</span>
+        </p>
+      )}
+
+      {/* Trial cards */}
+      {!loading && trials.length > 0 && (
+        <div className="space-y-3">
+          {trials.map((trial) => {
+            const id   = trial.protocolSection.identificationModule;
+            const stat = trial.protocolSection.statusModule;
+            const cond = trial.protocolSection.conditionsModule;
+            const des  = trial.protocolSection.designModule;
+            const desc = trial.protocolSection.descriptionModule;
+            const spon = trial.protocolSection.sponsorCollaboratorsModule;
+
+            return (
+              <Link key={id.nctId} href={`/trials/${id.nctId}`}>
+                <Card hoverable className="mb-0">
+                  <div className="flex items-start justify-between gap-4">
+
+                    {/* Left */}
+                    <div className="flex-1 min-w-0">
+                      <h2 className="font-semibold text-sm text-gray-900
+                                     group-hover:text-blue-600 transition-colors
+                                     leading-snug mb-1">
+                        {id.briefTitle}
+                      </h2>
+                      <p className="text-xs text-gray-400 font-mono mb-2">
+                        {id.nctId}
+                      </p>
+                      {desc?.briefSummary && (
+                        <p className="text-xs text-gray-500 line-clamp-2 mb-3 leading-relaxed">
+                          {desc.briefSummary}
+                        </p>
+                      )}
+                      {cond?.conditions && cond.conditions.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {cond.conditions.slice(0, 3).map((c) => (
+                            <Badge key={c} color="purple">{c}</Badge>
+                          ))}
+                          {cond.conditions.length > 3 && (
+                            <span className="text-xs text-gray-400 self-center">
+                              +{cond.conditions.length - 3} more
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right */}
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      <Badge color={statusColor(stat.overallStatus)}>
+                        {formatStatus(stat.overallStatus)}
+                      </Badge>
+                      {des?.phases?.map((p) => (
+                        <Badge key={p} color="indigo">{formatPhase(p)}</Badge>
+                      ))}
+                      {des?.enrollmentInfo?.count && (
+                        <span className="text-xs text-gray-400">
+                          {des.enrollmentInfo.count.toLocaleString()} participants
+                        </span>
+                      )}
+                    </div>
+
+                  </div>
+                  <p className="text-xs text-gray-400 mt-3 pt-3 border-t border-gray-100 truncate">
+                    Sponsor: {spon.leadSponsor.name}
+                  </p>
+                </Card>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Load more */}
+      {!loading && nextPageToken && trials.length > 0 && (
+        <div className="mt-8 flex justify-center">
+          <Button variant="outline" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? "Loading more…" : "Load more trials"}
+          </Button>
+        </div>
+      )}
+
     </main>
   );
 }
