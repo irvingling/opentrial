@@ -1,3 +1,5 @@
+import MechanismOfAction from "@/components/MechanismOfAction";
+import SimilarTrials from "@/components/SimilarTrials";
 import { notFound } from "next/navigation";
 import {
   fetchTrial,
@@ -258,6 +260,15 @@ export default async function TrialPage({ params }: Props) {
         </section>
       )}
 
+    {arms?.interventions && arms.interventions.length > 0 && (
+        <MechanismOfAction
+            interventions={arms.interventions.map((i) => ({
+            name: i.name,
+            type: i.type,
+            }))}
+        />
+    )}
+
       {/* Primary Outcomes */}
       {outcomes?.primaryOutcomes && outcomes.primaryOutcomes.length > 0 && (
         <section>
@@ -311,6 +322,14 @@ export default async function TrialPage({ params }: Props) {
           </div>
         </section>
       )}
+
+        {conditions?.conditions && conditions.conditions.length > 0 && (
+            <SimilarTrials
+                conditions={conditions.conditions}
+                phases={design?.phases ?? []}
+                currentNctId={id.nctId}
+            />
+        )}
 
       {/* External Link */}
       <section className="pt-4 border-t">

@@ -71,7 +71,19 @@ export async function searchTrials(
   params.set("pageSize", String(Math.min(pageSize, 100)));
   if (pageToken) params.set("pageToken", pageToken);
   if (status?.length) params.set("filter.overallStatus", status.join(","));
-  if (phase?.length) params.set("filter.phase", phase.join(","));
+  if (phase?.length) {
+  // Must convert: "PHASE2" → "phase2", "EARLY_PHASE1" → "early1"
+  const phaseMap: Record<string, string> = {
+    EARLY_PHASE1: "early1",
+    PHASE1:       "phase1",
+    PHASE2:       "phase2",
+    PHASE3:       "phase3",
+    PHASE4:       "phase4",
+    NA:           "na",
+  };
+  const mapped = phase.map((p) => phaseMap[p] ?? p.toLowerCase());
+  params.set("aggFilters", `phase:${mapped.join(",")}`);
+}
   params.set("format", "json");
 
   const url = `${BASE_URL}/studies?${params.toString()}`;
