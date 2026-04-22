@@ -11,10 +11,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" style={{ colorScheme: "light" }}>
       <body
         suppressHydrationWarning
-        className="min-h-full flex flex-col"
+        className="min-h-full flex flex-col bg-white text-gray-900"
+        style={{ backgroundColor: "white", color: "#111827" }}
       >
         {children}
       </body>

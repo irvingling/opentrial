@@ -1,3 +1,4 @@
+import TrialPitch from "@/components/TrialPitch";
 import MechanismOfAction from "@/components/MechanismOfAction";
 import SimilarTrials from "@/components/SimilarTrials";
 import { notFound } from "next/navigation";
@@ -18,10 +19,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   try {
     const trial = await fetchTrial(nctId);
     const title = trial.protocolSection.identificationModule.briefTitle;
-    const description =
-      trial.protocolSection.descriptionModule?.briefSummary;
+    const description = trial.protocolSection.descriptionModule?.briefSummary;
     return {
-      title: `${title} | OpenTrial`,
+      title:       `${title} | OpenTrial`,
       description: description?.slice(0, 160),
     };
   } catch {
@@ -33,7 +33,6 @@ export default async function TrialPage({ params }: Props) {
   const { nctId } = await params;
 
   let trial;
-
   try {
     trial = await fetchTrial(nctId);
   } catch (err: unknown) {
@@ -49,13 +48,10 @@ export default async function TrialPage({ params }: Props) {
           Could not retrieve data for{" "}
           <span className="font-mono">{nctId}</span>.
         </p>
-        <p className="text-sm text-gray-400">
-          {err instanceof Error ? err.message : "Unknown error"}
-        </p>
         <a
-          href="/trials"
-          className="mt-6 inline-block px-4 py-2 bg-blue-600 text-white
-                     rounded hover:bg-blue-700"
+          href="/"
+          className="mt-6 inline-block px-4 py-2 bg-gray-900 text-white
+                     rounded-lg text-sm hover:bg-gray-700"
         >
           ← Back to search
         </a>
@@ -64,285 +60,177 @@ export default async function TrialPage({ params }: Props) {
   }
 
   const { protocolSection } = trial;
-  const id          = protocolSection.identificationModule;
-  const status      = protocolSection.statusModule;
-  const sponsor     = protocolSection.sponsorCollaboratorsModule;
-  const desc        = protocolSection.descriptionModule;
-  const conditions  = protocolSection.conditionsModule;
-  const design      = protocolSection.designModule;
-  const eligibility = protocolSection.eligibilityModule;
-  const arms        = protocolSection.armsInterventionsModule;
-  const outcomes    = protocolSection.outcomesModule;
-  const locations   = protocolSection.contactsLocationsModule;
+  const id         = protocolSection.identificationModule;
+  const status     = protocolSection.statusModule;
+  const sponsor    = protocolSection.sponsorCollaboratorsModule;
+  const conditions = protocolSection.conditionsModule;
+  const design     = protocolSection.designModule;
+  const arms       = protocolSection.armsInterventionsModule;
+  const locations  = protocolSection.contactsLocationsModule;
+
+  // Group locations by country
+  const locationsByCountry = (locations?.locations ?? []).reduce(
+    (acc, loc) => {
+      const country = loc.country ?? "Other";
+      if (!acc[country]) acc[country] = [];
+      acc[country].push(loc);
+      return acc;
+    },
+    {} as Record<string, NonNullable<typeof locations>["locations"]>
+  );
+
+  const locationCount = locations?.locations?.length ?? 0;
 
   return (
-    <main className="max-w-4xl mx-auto px-4 py-8 space-y-10">
+    <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
 
-      {/* Breadcrumb */}
-      <nav className="text-sm text-gray-500 flex items-center gap-1">
-        <a href="/trials" className="hover:text-blue-600 hover:underline">
-          Trials
-        </a>
-        <span>/</span>
-        <span className="font-mono">{id.nctId}</span>
-      </nav>
+      {/* Back */}
+      <a
+        href="/"
+        className="text-sm text-gray-400 hover:text-gray-600 transition-colors
+                   flex items-center gap-1"
+      >
+        ← Back to search
+      </a>
 
       {/* Header */}
       <section>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2 leading-tight">
-          {id.briefTitle}
-        </h1>
-        {id.officialTitle && id.officialTitle !== id.briefTitle && (
-          <p className="text-sm text-gray-500 mb-3 italic">
-            {id.officialTitle}
-          </p>
-        )}
-        <div className="flex flex-wrap gap-2 mt-3">
-          <span
-            className={`px-3 py-1 rounded-full text-sm font-medium border
-                        ${getStatusColor(status.overallStatus)}`}
-          >
+        <div className="flex flex-wrap gap-2 mb-3">
+          <span className={`px-3 py-1 rounded-full text-xs font-medium border
+                            ${getStatusColor(status.overallStatus)}`}>
             {formatStatus(status.overallStatus)}
           </span>
           {design?.phases?.map((p) => (
             <span
               key={p}
-              className="px-3 py-1 rounded-full text-sm font-medium
-                         bg-indigo-100 text-indigo-800 border border-indigo-200"
+              className="px-3 py-1 rounded-full text-xs font-medium
+                         bg-indigo-50 text-indigo-700 border border-indigo-200"
             >
               {formatPhase(p)}
             </span>
           ))}
-          {design?.studyType && (
-            <span className="px-3 py-1 rounded-full text-sm font-medium
-                             bg-slate-100 text-slate-700 border border-slate-200">
-              {design.studyType}
-            </span>
-          )}
+          <span className="px-3 py-1 rounded-full text-xs font-mono
+                           text-gray-400 bg-gray-100">
+            {id.nctId}
+          </span>
         </div>
+
+        <h1 className="text-xl font-bold text-gray-900 leading-tight mb-1">
+          {id.briefTitle}
+        </h1>
+        <p className="text-sm text-gray-400">{sponsor.leadSponsor.name}</p>
       </section>
 
-      {/* Key Facts */}
-      <section className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4
-                          bg-gray-50 rounded-xl border">
+      {/* Quick stats */}
+      <section className="grid grid-cols-3 gap-3">
         {[
-          { label: "NCT ID",   value: id.nctId },
-          { label: "Sponsor",  value: sponsor.leadSponsor.name },
-          { label: "Start",    value: status.startDateStruct?.date ?? "—" },
           {
             label: "Enrollment",
             value: design?.enrollmentInfo?.count?.toLocaleString() ?? "—",
           },
           {
-            label: "Primary Completion",
+            label: "Start Date",
+            value: status.startDateStruct?.date ?? "—",
+          },
+          {
+            label: "Est. Completion",
             value: status.primaryCompletionDateStruct?.date ?? "—",
           },
-          {
-            label: "Study Completion",
-            value: status.completionDateStruct?.date ?? "—",
-          },
-          {
-            label: "Allocation",
-            value: design?.designInfo?.allocation ?? "—",
-          },
-          {
-            label: "Primary Purpose",
-            value: design?.designInfo?.primaryPurpose ?? "—",
-          },
         ].map(({ label, value }) => (
-          <div key={label}>
-            <p className="text-xs text-gray-400 uppercase tracking-wider mb-0.5">
-              {label}
-            </p>
-            <p className="font-medium text-gray-800 text-sm">{value}</p>
+          <div
+            key={label}
+            className="bg-gray-50 rounded-xl p-3 border border-gray-100"
+          >
+            <p className="text-xs text-gray-400 mb-1">{label}</p>
+            <p className="font-semibold text-gray-900 text-sm">{value}</p>
           </div>
         ))}
       </section>
 
-      {/* Summary */}
-      {desc?.briefSummary && (
-        <section>
-          <h2 className="text-lg font-semibold mb-2">Summary</h2>
-          <p className="text-gray-700 leading-relaxed whitespace-pre-wrap text-sm">
-            {desc.briefSummary}
-          </p>
-        </section>
-      )}
+      {/* ── Pitch deck ── */}
+      <TrialPitch nctId={id.nctId} />
 
-      {/* Conditions */}
-      {conditions?.conditions && conditions.conditions.length > 0 && (
-        <section>
-          <h2 className="text-lg font-semibold mb-2">Conditions</h2>
-          <div className="flex flex-wrap gap-2">
-            {conditions.conditions.map((c) => (
-              <span
-                key={c}
-                className="px-3 py-1 bg-purple-50 text-purple-800
-                           border border-purple-200 rounded-full text-sm"
-              >
-                {c}
-              </span>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Eligibility */}
-      {eligibility && (
-        <section>
-          <h2 className="text-lg font-semibold mb-3">Eligibility</h2>
-          <div className="flex flex-wrap gap-6 mb-4 text-sm">
-            {eligibility.sex && (
-              <div>
-                <span className="text-gray-400 uppercase text-xs">Sex </span>
-                <span className="capitalize">
-                  {eligibility.sex.toLowerCase()}
-                </span>
-              </div>
-            )}
-            {eligibility.minimumAge && (
-              <div>
-                <span className="text-gray-400 uppercase text-xs">Min Age </span>
-                <span>{eligibility.minimumAge}</span>
-              </div>
-            )}
-            {eligibility.maximumAge && (
-              <div>
-                <span className="text-gray-400 uppercase text-xs">Max Age </span>
-                <span>{eligibility.maximumAge}</span>
-              </div>
-            )}
-            {eligibility.healthyVolunteers !== undefined && (
-              <div>
-                <span className="text-gray-400 uppercase text-xs">
-                  Healthy Volunteers{" "}
-                </span>
-                <span>{eligibility.healthyVolunteers ? "Yes" : "No"}</span>
-              </div>
-            )}
-          </div>
-          {eligibility.eligibilityCriteria && (
-            <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-700
-                            whitespace-pre-wrap leading-relaxed font-mono border">
-              {eligibility.eligibilityCriteria}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* Interventions */}
+      {/* ── Drug / MOA ── */}
       {arms?.interventions && arms.interventions.length > 0 && (
         <section>
-          <h2 className="text-lg font-semibold mb-3">
-            Interventions ({arms.interventions.length})
+          <h2 className="font-semibold text-gray-900 text-sm mb-3">
+            The Drug
           </h2>
-          <div className="space-y-3">
-            {arms.interventions.map((inv, i) => (
-              <div key={i} className="p-4 border rounded-lg bg-white">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs px-2 py-0.5 bg-gray-100
-                                   text-gray-600 rounded uppercase tracking-wide">
-                    {inv.type}
-                  </span>
-                  <span className="font-medium text-sm">{inv.name}</span>
-                </div>
-                {inv.description && (
-                  <p className="text-sm text-gray-600 mt-1">{inv.description}</p>
-                )}
-                {inv.otherNames && inv.otherNames.length > 0 && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    Also known as: {inv.otherNames.join(", ")}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-    {arms?.interventions && arms.interventions.length > 0 && (
-        <MechanismOfAction
-            interventions={arms.interventions.map((i) => ({
-            name: i.name,
-            type: i.type,
+          <MechanismOfAction
+            interventions={arms.interventions.map((i: any) => ({
+              name: i.name,
+              type: i.type,
             }))}
-        />
-    )}
-
-      {/* Primary Outcomes */}
-      {outcomes?.primaryOutcomes && outcomes.primaryOutcomes.length > 0 && (
-        <section>
-          <h2 className="text-lg font-semibold mb-3">Primary Outcomes</h2>
-          <div className="space-y-3">
-            {outcomes.primaryOutcomes.map((o, i) => (
-              <div key={i} className="p-4 border rounded-lg bg-white">
-                <p className="font-medium text-sm">{o.measure}</p>
-                {o.timeFrame && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Time Frame: {o.timeFrame}
-                  </p>
-                )}
-                {o.description && (
-                  <p className="text-sm text-gray-600 mt-1">{o.description}</p>
-                )}
-              </div>
-            ))}
-          </div>
+          />
         </section>
       )}
 
-      {/* Locations */}
-      {locations?.locations && locations.locations.length > 0 && (
+      {/* ── Sites ── */}
+      {locationCount > 0 && (
         <section>
-          <h2 className="text-lg font-semibold mb-3">
-            Locations ({locations.locations.length})
+          <h2 className="font-semibold text-gray-900 text-sm mb-3">
+            Sites ({locationCount})
           </h2>
-          <div className="grid sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
-            {locations.locations.map((loc, i) => (
-              <div key={i} className="p-3 border rounded-lg text-sm bg-white">
-                {loc.facility && (
-                  <p className="font-medium text-gray-800">{loc.facility}</p>
-                )}
-                <p className="text-gray-500">
-                  {[loc.city, loc.state, loc.country]
-                    .filter(Boolean)
-                    .join(", ")}
+          <div className="space-y-4 max-h-72 overflow-y-auto pr-1">
+            {Object.entries(locationsByCountry).map(([country, locs]) => (
+              <div key={country}>
+                <p className="text-xs font-medium text-gray-400 uppercase
+                               tracking-wide mb-1.5">
+                  {country}
                 </p>
-                {loc.status && (
-                  <span className={`text-xs font-medium ${
-                    loc.status === "RECRUITING"
-                      ? "text-green-600"
-                      : "text-gray-400"
-                  }`}>
-                    {loc.status}
-                  </span>
-                )}
+                <div className="grid sm:grid-cols-2 gap-1.5">
+                  {(locs ?? []).map((loc, i) => (
+                    <div
+                      key={i}
+                      className="p-2.5 border border-gray-100 rounded-lg
+                                 bg-white"
+                    >
+                      {loc.facility && (
+                        <p className="font-medium text-gray-800 text-xs">
+                          {loc.facility}
+                        </p>
+                      )}
+                      <p className="text-gray-400 text-xs">
+                        {[loc.city, loc.state].filter(Boolean).join(", ")}
+                      </p>
+                      {loc.status === "RECRUITING" && (
+                        <span className="text-xs text-green-600 font-medium">
+                          ● Recruiting
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
         </section>
       )}
 
-        {conditions?.conditions && conditions.conditions.length > 0 && (
-            <SimilarTrials
-                conditions={conditions.conditions}
-                phases={design?.phases ?? []}
-                currentNctId={id.nctId}
-            />
-        )}
+      {/* ── Similar trials ── */}
+      {conditions?.conditions && conditions.conditions.length > 0 && (
+        <SimilarTrials
+          conditions={conditions.conditions}
+          phases={design?.phases ?? []}
+          currentNctId={id.nctId}
+        />
+      )}
 
-      {/* External Link */}
-      <section className="pt-4 border-t">
+      {/* ── Footer ── */}
+      <section className="pt-4 border-t flex items-center justify-between">
         <a
           href={`https://clinicaltrials.gov/study/${id.nctId}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600
-                     text-white rounded-lg text-sm hover:bg-blue-700
+          className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900
+                     text-white rounded-lg text-sm hover:bg-gray-700
                      transition-colors"
         >
           View on ClinicalTrials.gov ↗
         </a>
+        <span className="text-xs text-gray-400">
+          Updated: {status.lastUpdatePostDateStruct?.date ?? "—"}
+        </span>
       </section>
 
     </main>

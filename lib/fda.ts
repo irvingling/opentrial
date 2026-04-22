@@ -20,7 +20,7 @@ export interface DrugLabelInfo {
   indications:       string | null;
   drugClass:         string | null;
   labelerName:       string | null;
-  source:            "fda" | "pubchem" | "chembl" | "wikipedia";
+  source:            "fda" | "pubchem" | "chembl" | "wikipedia" | "ai";
   sourceLabel:       string;
 }
 

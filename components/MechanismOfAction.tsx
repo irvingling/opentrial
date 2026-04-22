@@ -21,12 +21,14 @@ function SourceBadge({ source }: { source: DrugLabelInfo["source"] }) {
     chembl:    "bg-purple-50 text-purple-700 border-purple-100",
     pubchem:   "bg-green-50 text-green-700 border-green-100",
     wikipedia: "bg-gray-50 text-gray-600 border-gray-200",
+    ai:        "bg-violet-50 text-violet-700 border-violet-100",
   };
   const labels: Record<DrugLabelInfo["source"], string> = {
     fda:       "FDA Label",
     chembl:    "ChEMBL",
     pubchem:   "PubChem",
     wikipedia: "Wikipedia",
+    ai:        "AI Generated",
   };
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full border ${styles[source]}`}>
@@ -39,12 +41,19 @@ function SourceBadge({ source }: { source: DrugLabelInfo["source"] }) {
 export default function MechanismOfAction({ interventions }: Props) {
   const [results, setResults]   = useState<DrugResult[]>([]);
   const [loading, setLoading]   = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null); // ✅ use index
 
-  const drugInterventions = interventions.filter((i) =>
-    ["DRUG", "BIOLOGICAL", "COMBINATION_PRODUCT"].includes(
-      i.type.toUpperCase()
-    )
+  // ✅ Deduplicate by name before fetching
+  const drugInterventions = Array.from(
+    new Map(
+      interventions
+        .filter((i) =>
+          ["DRUG", "BIOLOGICAL", "COMBINATION_PRODUCT"].includes(
+            i.type.toUpperCase()
+          )
+        )
+        .map((i) => [i.name.toLowerCase(), i])
+    ).values()
   );
 
   useEffect(() => {
@@ -81,9 +90,9 @@ export default function MechanismOfAction({ interventions }: Props) {
     setResults(allResults);
     setLoading(false);
 
-    // Auto-open the first drug that has any data
-    const firstFound = allResults.find((r) => r.found);
-    if (firstFound) setExpanded(firstFound.name);
+    // ✅ Auto-open using index instead of name
+    const firstFoundIndex = allResults.findIndex((r) => r.found);
+    if (firstFoundIndex !== -1) setExpanded(firstFoundIndex);
   }
 
   if (drugInterventions.length === 0) return null;
@@ -109,16 +118,16 @@ export default function MechanismOfAction({ interventions }: Props) {
 
       {!loading && (
         <div className="space-y-3">
-          {results.map((result) => (
+          {results.map((result, index) => ( // ✅ added index
             <div
-              key={result.name}
+              key={`${result.name}-${index}`} // ✅ unique key
               className="border border-gray-100 rounded-lg overflow-hidden"
             >
 
               {/* ── Drug name row — always visible ── */}
               <button
                 onClick={() =>
-                  setExpanded(expanded === result.name ? null : result.name)
+                  setExpanded(expanded === index ? null : index) // ✅ use index
                 }
                 className="w-full flex items-center justify-between p-4
                            hover:bg-gray-50 transition-colors text-left"
@@ -140,7 +149,6 @@ export default function MechanismOfAction({ interventions }: Props) {
                     <SourceBadge source={result.info.source} />
                   )}
 
-                  {/* Wikipedia-only means no technical DB data */}
                   {result.info?.source === "wikipedia" && (
                     <span className="text-xs px-2 py-0.5 bg-yellow-50
                                      text-yellow-700 border border-yellow-100
@@ -165,20 +173,19 @@ export default function MechanismOfAction({ interventions }: Props) {
                 </div>
 
                 <span className="text-gray-400 text-xs shrink-0 ml-2">
-                  {expanded === result.name ? "▲ Hide" : "▼ Show"}
+                  {expanded === index ? "▲ Hide" : "▼ Show"} // ✅ use index
                 </span>
               </button>
 
               {/* ── Expanded panel ── */}
-              {expanded === result.name && (
+              {expanded === index && ( // ✅ use index
 
                 <div className="border-t border-gray-100">
 
-                  {/* ── CASE 1: Found in FDA / ChEMBL / PubChem ── */}
-                  {result.found && result.info && result.info.source !== "wikipedia" && (
+                 {/* ── CASE 1: Found in FDA / ChEMBL / PubChem / AI ── */}
+{result.found && result.info && result.info.source !== "wikipedia" && (
                     <div className="px-4 pb-4 space-y-4 bg-gray-50">
 
-                      {/* Plain-language summary at the top */}
                       {result.info.summary && (
                         <div className="pt-4 pb-3 border-b border-gray-200">
                           <h3 className="text-xs font-semibold text-gray-500
@@ -191,7 +198,6 @@ export default function MechanismOfAction({ interventions }: Props) {
                         </div>
                       )}
 
-                      {/* Mechanism of Action */}
                       {result.info.mechanismOfAction && (
                         <div className={result.info.summary ? "" : "pt-4"}>
                           <h3 className="text-xs font-semibold text-gray-500
@@ -204,7 +210,6 @@ export default function MechanismOfAction({ interventions }: Props) {
                         </div>
                       )}
 
-                      {/* Pharmacodynamics */}
                       {result.info.pharmacodynamics && (
                         <div>
                           <h3 className="text-xs font-semibold text-gray-500
@@ -217,7 +222,6 @@ export default function MechanismOfAction({ interventions }: Props) {
                         </div>
                       )}
 
-                      {/* Indications fallback */}
                       {!result.info.mechanismOfAction &&
                         result.info.indications && (
                         <div className={result.info.summary ? "" : "pt-4"}>
@@ -231,7 +235,6 @@ export default function MechanismOfAction({ interventions }: Props) {
                         </div>
                       )}
 
-                      {/* Name / manufacturer row */}
                       <div className="flex flex-wrap gap-4 pt-2 text-xs
                                       text-gray-400 border-t border-gray-200">
                         {result.info.brandName && (
@@ -265,14 +268,24 @@ export default function MechanismOfAction({ interventions }: Props) {
                       </p>
                     </div>
                   )}
+{/* AI disclaimer */}
+{result.info?.source === "ai" && (
+  <div className="pt-3 pb-2 px-3 bg-violet-50 border border-violet-100
+                  rounded-lg text-xs text-violet-700 flex items-start gap-2">
+    <span className="shrink-0">⚠️</span>
+    <span>
+      AI-generated from training data including published literature,
+      patents, and clinical trial records. Always verify with primary
+      sources before clinical use.
+    </span>
+  </div>
+)}
 
-                  {/* ── CASE 2: Wikipedia only (investigational drug) ── */}
+                  {/* ── CASE 2: Wikipedia only ── */}
                   {result.found &&
                     result.info &&
                     result.info.source === "wikipedia" && (
                     <div className="px-4 py-4 bg-amber-50 space-y-3">
-
-                      {/* Wikipedia summary — this IS the useful content */}
                       <div>
                         <h3 className="text-xs font-semibold text-amber-700
                                        uppercase tracking-wider mb-2">
@@ -285,11 +298,9 @@ export default function MechanismOfAction({ interventions }: Props) {
 
                       <p className="text-xs text-amber-700">
                         No entry found in FDA, ChEMBL, or PubChem — this is
-                        likely an investigational compound. Full technical
-                        data unavailable from free databases.
+                        likely an investigational compound.
                       </p>
 
-                      {/* Links for more detail */}
                       <div>
                         <p className="text-xs font-medium text-amber-800 mb-2">
                           Search for more detail:
@@ -330,7 +341,7 @@ export default function MechanismOfAction({ interventions }: Props) {
                     </div>
                   )}
 
-                  {/* ── CASE 3: Not found anywhere at all ── */}
+                  {/* ── CASE 3: Not found ── */}
                   {!result.found && !result.error && (
                     <div className="px-4 py-4 bg-yellow-50">
                       <p className="text-sm text-yellow-800 mb-1">

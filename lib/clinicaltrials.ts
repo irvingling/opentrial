@@ -84,6 +84,7 @@ export async function searchTrials(
   const mapped = phase.map((p) => phaseMap[p] ?? p.toLowerCase());
   params.set("aggFilters", `phase:${mapped.join(",")}`);
 }
+
   params.set("format", "json");
 
   const url = `${BASE_URL}/studies?${params.toString()}`;
