@@ -374,8 +374,8 @@ function CustomTooltip({ active, payload }: any) {
 function CustomYAxisTick({
   x, y, payload, chartData,
 }: {
-  x: number;
-  y: number;
+  x: number | string;
+  y: number | string;
   payload: any;
   chartData: ChartEntry[];
 }) {
@@ -1023,7 +1023,7 @@ export default function EvidencePage({
                   cursor="pointer" maxBarSize={32} radius={[0, 6, 6, 0]}
                   onClick={(d: any) => handleBarClick(d.drugName)}>
                   <LabelList dataKey="totalValue" position="right"
-                    formatter={(v: number) => `${v}%`}
+                    formatter={(v: any) => `${v}%`}
                     style={{ fontSize: 11, fontWeight: 600, fill: "#374151" }} />
                   {chartData.map((entry, index) => (
                     <Cell key={index} fill={entry.color} fillOpacity={0.85} />

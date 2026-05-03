@@ -299,7 +299,7 @@ function ClarifyStep({
   togglePhase:     (id: string) => void;
   onSubmit:        () => void;
   onSkip:          () => void;
-  inputRef:        React.RefObject<HTMLTextAreaElement>;
+  inputRef:        React.RefObject<HTMLTextAreaElement | null>;
 }) {
   const MESSAGE = `Before I search, let me get to know your patient a little better — this helps me find the most relevant trials.
 
@@ -498,7 +498,7 @@ export default function HomePage() {
   const [patientContext, setPatientContext] = useState("");
   const [clarifyInput, setClarifyInput]     = useState("");
   const [selectedPhases, setSelectedPhases] = useState<string[]>([]);
-  const clarifyInputRef                     = useRef<HTMLTextAreaElement>(null);
+  const clarifyInputRef                     = useRef<HTMLTextAreaElement | null>(null);
   const prefetchDone                        = useRef(false);
   const [searchStep, setSearchStep]         = useState(0);
 

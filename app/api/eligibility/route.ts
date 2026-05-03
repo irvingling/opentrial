@@ -62,7 +62,7 @@ const trialData = await Promise.all(trials.map(async (trial: any) => {
     maxAge:    eligibility?.maximumAge ?? null,
     sex:       eligibility?.sex ?? null,
     healthyVolunteers:    eligibility?.healthyVolunteers ?? false,
-    status:               ps.statusModule?.overallStatus ?? "",
+    overallStatus:        ps.statusModule?.overallStatus ?? "",
     resolvedInterventions,
   };
 }));
@@ -85,7 +85,7 @@ ${trialData.map((t, i) => `
 TRIAL ${i + 1}: ${t.nctId}
 Title: ${t.title}
 Phase: ${t.phase}
-Status: ${t.status}
+Status: ${t.overallStatus}
 Min Age: ${t.minAge ?? "Not specified"}
 Max Age: ${t.maxAge ?? "Not specified"}
 Interventions (resolved): ${t.resolvedInterventions}
