@@ -360,7 +360,7 @@ And — which trial phase are you open to? Select below, or leave blank to see a
 
             {/* Phase options — fade in after typing done */}
             {done && (
-              <div className="mt-5 space-y-2 animate-in fade-in duration-300">
+              <div className="mt-5 space-y-2 ">
                 {PHASE_INFO.map((phase) => {
                   const selected = selectedPhases.includes(phase.id);
                   return (
@@ -440,7 +440,7 @@ And — which trial phase are you open to? Select below, or leave blank to see a
 
       {/* Input — fade in after typing done */}
       {done && (
-        <div className="animate-in fade-in duration-300">
+        <div className="">
           <div className="bg-white border border-gray-200 rounded-2xl
                           shadow-sm overflow-hidden">
             <textarea
