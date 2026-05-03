@@ -1,11 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { kv } from "@vercel/kv";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function GET(request: NextRequest) {
-  const q = new URL(request.url).searchParams.get("q") ?? "";
+  const url     = new URL(request.url);
+  const q       = url.searchParams.get("q") ?? "";
+  const refresh = url.searchParams.get("refresh") === "true";
+
   if (!q) return NextResponse.json({ error: "No query" }, { status: 400 });
+
+  const cacheKey = `summary:v1:${q.toLowerCase().trim().replace(/\s+/g, "-").slice(0, 100)}`;
+
+  // Check cache unless refresh requested
+  if (!refresh) {
+    try {
+      const cached = await kv.get(cacheKey);
+      if (cached) {
+        console.log("[Summary] Cache hit:", cacheKey);
+        return NextResponse.json(cached);
+      }
+    } catch {
+      // Cache miss — continue
+    }
+  } else {
+    console.log("[Summary] Cache bypassed — refresh requested");
+  }
 
   const prompt = `A clinician searched for clinical trials: "${q}"
 
@@ -36,14 +57,31 @@ Rules:
 
   try {
     const msg = await client.messages.create({
-      model: "claude-sonnet-4-5-20250929",
-      max_tokens: 1024,
-      messages: [{ role: "user", content: prompt }],
+      model:       "claude-sonnet-4-5-20250929",
+      max_tokens:  1024,
+      temperature: 0,
+      messages:    [{ role: "user", content: prompt }],
     });
 
-    const raw = msg.content[0].type === "text" ? msg.content[0].text : "";
-const text = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-return NextResponse.json(JSON.parse(text));
+    const raw  = msg.content[0].type === "text" ? msg.content[0].text : "";
+    const text = raw
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/```\s*$/i, "")
+      .trim();
+
+    const parsed = JSON.parse(text);
+
+    // Cache for 6 hours
+    try {
+      await kv.set(cacheKey, parsed, { ex: 60 * 60 * 6 });
+      console.log("[Summary] Cached:", cacheKey);
+    } catch {
+      // Cache write failed — still return result
+    }
+
+    return NextResponse.json(parsed);
+
   } catch (err) {
     console.error("Summary route error:", err);
     return NextResponse.json({ error: "Failed" }, { status: 500 });

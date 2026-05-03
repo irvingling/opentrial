@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchDrugInfo } from "@/lib/fda";
 import Anthropic from "@anthropic-ai/sdk";
 import { kv } from "@vercel/kv";
+import { isRealDrugName } from "@/lib/isDrugName";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -15,9 +16,8 @@ async function searchClinicalTrials(drugName: string): Promise<string> {
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) return "";
 
-    const data = await res.json();
+    const data   = await res.json();
     const studies = data.studies ?? [];
-
     if (studies.length === 0) return "";
 
     const texts = studies.map((s: any) => {
@@ -59,7 +59,6 @@ async function searchPubMed(drugName: string): Promise<string> {
 
     const searchData = await searchRes.json();
     const ids: string[] = searchData.esearchresult?.idlist ?? [];
-
     if (ids.length === 0) return "";
 
     const fetchUrl =
@@ -92,10 +91,15 @@ async function fetchFromClaude(drugName: string) {
     // Cache miss — continue
   }
 
-  // Fetch real data in parallel
+  // For compound codes — search ClinicalTrials
+  // For proper drug names — use Claude knowledge + PubMed only (faster)
+  const isCompoundCode = /^[A-Z]{2,}-?\d{3,}/i.test(drugName.trim());
+
   console.log(`[Drug] Fetching real data from ClinicalTrials + PubMed for: ${drugName}`);
   const [clinicalTrialsData, pubmedData] = await Promise.all([
-    searchClinicalTrials(drugName),
+    isCompoundCode
+      ? searchClinicalTrials(drugName)
+      : Promise.resolve(""),
     searchPubMed(drugName),
   ]);
 
@@ -131,30 +135,35 @@ Return ONLY valid JSON:
 
 Return ONLY valid JSON. No markdown, no explanation, no code blocks.`
 
-    : `You are a clinical pharmacologist. No real-time data was found for "${drugName}" in ClinicalTrials.gov or PubMed.
+    : `You are a clinical pharmacologist with comprehensive knowledge of drugs in development.
 
-CRITICAL RULES:
+The drug is: "${drugName}"
+
+No real-time database data was found. Use your training knowledge to describe this drug.
+
+RULES:
 1. Only describe "${drugName}" specifically
-2. Do NOT confuse with other drugs in the same trial
-3. Be specific about molecular target if known
-4. If uncertain, say "limited published data available"
+2. Be specific about molecular target if known from your training data
+3. Include any known aliases, compound codes, or brand names
+4. If this is an investigational drug, describe what is known from publications, conference presentations or trial registrations
 
 Return ONLY valid JSON:
 {
-  "mechanismOfAction": "Based on available literature, [what is known about ${drugName}] — or null if truly unknown",
-  "drugClass": "Specific class if known — or null",
-  "summary": "1-2 sentences — or null if unknown",
-  "confidence": "high, medium, low, or none",
-  "evidenceBasis": "Source of information or No published information found"
+  "mechanismOfAction": "Specific mechanism and molecular target if known from training data",
+  "drugClass": "Specific class if known",
+  "summary": "1-2 sentences — what this drug is and what it treats",
+  "confidence": "high if well known, medium if emerging, low if very early stage",
+  "evidenceBasis": "Training data including published literature and trial registrations"
 }
 
 Return ONLY valid JSON. No markdown, no explanation, no code blocks.`;
 
   try {
     const message = await anthropic.messages.create({
-      model:      "claude-sonnet-4-5-20250929",
-      max_tokens: 1024,
-      messages:   [{ role: "user", content: prompt }],
+      model:       "claude-sonnet-4-5-20250929",
+      max_tokens:  1024,
+      temperature: 0,
+      messages:    [{ role: "user", content: prompt }],
     });
 
     const text = message.content[0].type === "text"
@@ -170,7 +179,6 @@ Return ONLY valid JSON. No markdown, no explanation, no code blocks.`;
       .trim();
 
     const parsed = JSON.parse(cleaned);
-
     console.log(`[Drug] Confidence: ${parsed.confidence}`);
 
     if (!parsed.mechanismOfAction && parsed.confidence === "none") {
@@ -188,7 +196,7 @@ Return ONLY valid JSON. No markdown, no explanation, no code blocks.`;
       drugClass:         parsed.drugClass,
       labelerName:       null,
       source:            "ai",
-      sourceLabel:       `AI Generated · ${parsed.evidenceBasis}`,
+      sourceLabel:       `AI · ${parsed.evidenceBasis}`,
       confidence:        parsed.confidence,
       evidenceBasis:     parsed.evidenceBasis,
       cached:            false,
@@ -209,6 +217,21 @@ Return ONLY valid JSON. No markdown, no explanation, no code blocks.`;
   }
 }
 
+// ── Extract alias from summary text ──────────────────────────────────────────
+function extractAlias(summary: string): string | null {
+  const patterns = [
+    /also referred to as ([a-zA-Z0-9-]+)/i,
+    /also known as ([a-zA-Z0-9-]+)/i,
+    /brand name[:\s]+([a-zA-Z0-9-]+)/i,
+    /\(([a-zA-Z]{2,}[a-zA-Z0-9-]*)\)/,
+  ];
+  for (const pattern of patterns) {
+    const match = summary.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
 // ── Main route ────────────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   const name = request.nextUrl.searchParams.get("name");
@@ -220,19 +243,39 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  try {
-    // ── 1. Try databases first ───────────────────────────────────────────────
-    const info = await fetchDrugInfo(name);
-    if (info) {
-      return NextResponse.json({ found: true, ...info });
-    }
+  // Skip anything that doesn't look like a real drug name
+  if (!isRealDrugName(name)) {
+    console.log(`[Drug] Skipping non-drug term: ${name}`);
+    return NextResponse.json({ found: false, skipped: true });
+  }
+
+try {
+  // ── 1. Try databases first ───────────────────────────────────────────────
+  const info = await fetchDrugInfo(name);
+
+  // Check quality — if MoA is useless or missing, fall through to Claude
+  const hasUsefulMoA = info?.mechanismOfAction &&
+    !info.mechanismOfAction.toLowerCase().includes("unknown") &&
+    !info.mechanismOfAction.toLowerCase().includes("not available") &&
+    info.mechanismOfAction.length > 20;
+
+  const hasUsefulSummary = info?.summary && info.summary.length > 20;
+
+  if (info && (hasUsefulMoA || hasUsefulSummary)) {
+    return NextResponse.json({ found: true, ...info });
+  }
+
+  // Database found it but data is poor — enrich with Claude
+  if (info) {
+    console.log(`[Drug] Database result poor quality for: ${name} — enriching with Claude`);
+  }
 
     // ── 2. Fall back to Claude with real data ────────────────────────────────
     console.log(`[Drug] Not found in databases, fetching real data + Claude for: ${name}`);
     const aiResult = await fetchFromClaude(name);
 
     if (aiResult) {
-      // ✅ If confidence is low and we found an alias, search again with alias
+      // If confidence is low and we found an alias, retry with alias
       if (
         (aiResult as any).confidence === "low" &&
         (aiResult as any).summary
@@ -266,21 +309,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-// ── Extract alias from summary text ──────────────────────────────────────────
-function extractAlias(summary: string): string | null {
-  // Look for patterns like "also referred to as X" or "also known as X"
-  const patterns = [
-    /also referred to as ([a-zA-Z0-9-]+)/i,
-    /also known as ([a-zA-Z0-9-]+)/i,
-    /brand name[:\s]+([a-zA-Z0-9-]+)/i,
-    /\(([a-zA-Z]{2,}[a-zA-Z0-9-]*)\)/,  // e.g. "(icotrokinra)"
-  ];
-
-  for (const pattern of patterns) {
-    const match = summary.match(pattern);
-    if (match?.[1]) return match[1];
-  }
-  return null;
 }

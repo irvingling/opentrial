@@ -6,30 +6,32 @@ interface Tag {
 }
 
 interface Recommendation {
-  label: string;
-  note?: string;
-  detail?: string;
+  label:    string;
+  note?:    string;
+  detail?:  string;
   dotColor: "green" | "blue" | "orange" | "gray" | "red" | "purple";
 }
 
 interface GuidelineSummary {
-  sources: string[];
-  keyPoint: string;
+  sources:         string[];
+  keyPoint:        string;
   recommendations: Recommendation[];
-  statCallout: { value: string; description: string } | null;
+  statCallout:     { value: string; description: string } | null;
 }
 
 export interface SummaryData {
-  tags: Tag[];
+  tags:             Tag[];
   guidelineSummary: GuidelineSummary;
-  whyTrial: string[];
+  whyTrial:         string[];
 }
 
 interface Props {
-  query: string;
-  summaryData: SummaryData;
-  trialCount: number;
-  onBrowseTrials: () => void;
+  query:             string;
+  summaryData:       SummaryData;
+  trialCount:        number;
+  searchCount?:      number;
+  onBrowseTrials:    () => void;
+  onExploreEvidence: () => void;
 }
 
 const TAG_STYLES: Record<string, string> = {
@@ -50,15 +52,23 @@ const DOT_STYLES: Record<string, string> = {
   purple: "bg-purple-500",
 };
 
-export default function SummaryPage({ query, summaryData, trialCount, onBrowseTrials }: Props) {
-  const { tags, guidelineSummary, whyTrial } = summaryData;
+export default function SummaryPage({
+  query,
+  summaryData,
+  trialCount,
+  searchCount,
+  onBrowseTrials,
+  onExploreEvidence,
+}: Props) {
+  const { tags, guidelineSummary } = summaryData;
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 space-y-5">
 
       {/* 1 · Query echo */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+        <p className="text-xs font-medium text-gray-400 uppercase
+                      tracking-wide mb-1">
           Your Search
         </p>
         <p className="text-gray-700 text-sm italic">"{query}"</p>
@@ -67,7 +77,8 @@ export default function SummaryPage({ query, summaryData, trialCount, onBrowseTr
             {tags.map((tag) => (
               <span
                 key={tag.label}
-                className={`text-xs font-medium px-3 py-1 rounded-full ${TAG_STYLES[tag.color] ?? TAG_STYLES.gray}`}
+                className={`text-xs font-medium px-3 py-1 rounded-full
+                            ${TAG_STYLES[tag.color] ?? TAG_STYLES.gray}`}
               >
                 {tag.label}
               </span>
@@ -76,83 +87,147 @@ export default function SummaryPage({ query, summaryData, trialCount, onBrowseTr
         )}
       </div>
 
-      {/* 2 · Guideline summary */}
+      {/* 2 · Trust signals */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex items-center gap-1.5 text-xs text-gray-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+          Live data from ClinicalTrials.gov
+        </div>
+        <span className="text-gray-200">|</span>
+        {searchCount && (
+          <>
+            <div className="text-xs text-gray-400">
+              🔍 {searchCount} searches run
+            </div>
+            <span className="text-gray-200">|</span>
+          </>
+        )}
+        <div className="text-xs text-gray-400">
+          📋 {guidelineSummary.sources.join(", ")}
+        </div>
+      </div>
+
+      {/* 3 · Simplified guideline summary */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <div className="flex items-center gap-3 mb-1">
-          <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center text-base">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center
+                          justify-center text-base flex-shrink-0">
             📋
           </div>
           <div>
-            <h2 className="font-semibold text-gray-900 text-sm">Current Standard of Care</h2>
-            <p className="text-xs text-gray-400">{guidelineSummary.sources.join(" · ")}</p>
+            <h2 className="font-semibold text-gray-900 text-sm">
+              Guideline Recommendation
+            </h2>
+            <p className="text-xs text-gray-400">
+              {guidelineSummary.sources.join(" · ")}
+            </p>
           </div>
         </div>
 
-        <p className="text-sm text-gray-600 mt-3 mb-4">{guidelineSummary.keyPoint}</p>
+        {/* Key point */}
+        <p className="text-sm text-gray-700 leading-relaxed mb-4">
+          {guidelineSummary.keyPoint}
+        </p>
 
-        <div className="space-y-2">
+        {/* Recommendations as clean pills */}
+        <div className="flex flex-wrap gap-2">
           {guidelineSummary.recommendations.map((item) => (
-            <div key={item.label} className="flex items-start gap-3 bg-gray-50 rounded-lg px-4 py-3">
-              <span className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${DOT_STYLES[item.dotColor] ?? DOT_STYLES.gray}`} />
-              <div>
-                <p className="text-sm font-medium text-gray-800">
-                  {item.label}{" "}
-                  {item.note && <span className="font-normal text-gray-500 text-xs">— {item.note}</span>}
-                </p>
-                {item.detail && <p className="text-xs text-gray-400 mt-0.5">{item.detail}</p>}
-              </div>
+            <div
+              key={item.label}
+              className="flex items-center gap-2 px-3 py-1.5 bg-gray-50
+                         border border-gray-100 rounded-full"
+            >
+              <span className={`w-2 h-2 rounded-full flex-shrink-0
+                                ${DOT_STYLES[item.dotColor] ?? DOT_STYLES.gray}`}
+              />
+              <span className="text-xs font-medium text-gray-700">
+                {item.label}
+              </span>
+              {item.note && (
+                <span className="text-xs text-gray-400">
+                  — {item.note}
+                </span>
+              )}
             </div>
           ))}
         </div>
 
+        {/* Stat callout */}
         {guidelineSummary.statCallout && (
-          <div className="mt-4 bg-blue-50 rounded-lg px-4 py-3 flex items-center gap-4">
-            <span className="text-2xl font-bold text-blue-700">{guidelineSummary.statCallout.value}</span>
-            <p className="text-xs text-blue-600 leading-relaxed">{guidelineSummary.statCallout.description}</p>
+          <div className="mt-4 flex items-center gap-3 p-3 bg-blue-50
+                          rounded-lg">
+            <span className="text-2xl font-bold text-blue-700">
+              {guidelineSummary.statCallout.value}
+            </span>
+            <p className="text-xs text-blue-600 leading-relaxed">
+              {guidelineSummary.statCallout.description}
+            </p>
           </div>
         )}
       </div>
 
-      {/* 3 · Why a trial */}
-      {whyTrial.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center text-base">
-              🔬
-            </div>
-            <h2 className="font-semibold text-gray-900 text-sm">Why Consider a Trial?</h2>
-          </div>
-          <div className="space-y-3">
-            {whyTrial.map((point, i) => (
-              <div key={i} className="flex items-start gap-3">
-                <span className="mt-0.5 text-purple-400 font-bold text-sm flex-shrink-0">→</span>
-                <p className="text-sm text-gray-600">{point}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* 4 · Two action paths */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
-      {/* 4 · CTA */}
-      <div className="bg-gray-900 rounded-xl p-6 text-white shadow-md">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-gray-400 text-xs mb-1">Matched to your patient</p>
-            <h3 className="text-2xl font-bold">{trialCount} trial{trialCount !== 1 ? "s" : ""} found</h3>
-            <p className="text-gray-400 text-xs mt-1">Phase 2–4 · Actively Recruiting</p>
+        {/* Explore Evidence */}
+        <button
+          onClick={onExploreEvidence}
+          className="flex flex-col items-start p-5 bg-white border
+                     border-gray-200 rounded-xl hover:border-purple-300
+                     hover:shadow-md transition-all text-left group"
+        >
+          <div className="w-9 h-9 bg-purple-50 rounded-lg flex items-center
+                          justify-center text-lg mb-3">
+            🔬
           </div>
-          <button
-            onClick={onBrowseTrials}
-            className="bg-white text-gray-900 font-semibold px-5 py-3 rounded-lg hover:bg-gray-100 transition-colors text-sm whitespace-nowrap"
-          >
-            Browse Trials →
-          </button>
-        </div>
+          <p className="font-semibold text-gray-900 text-sm mb-1">
+            Explore the Evidence
+          </p>
+          <p className="text-xs text-gray-400 leading-relaxed mb-2">
+            Compare pivotal trial data, efficacy rates and subgroup analyses
+            across all approved options
+          </p>
+          <span className="text-xs text-purple-500 font-medium
+                           group-hover:text-purple-700 transition-colors">
+            View bar charts & trial data →
+          </span>
+        </button>
+
+        {/* Find Trials */}
+        <button
+          onClick={onBrowseTrials}
+          className="flex flex-col items-start p-5 bg-gray-900
+                     rounded-xl hover:bg-gray-800 transition-all
+                     text-left group"
+        >
+          <div className="w-9 h-9 bg-white/10 rounded-lg flex items-center
+                          justify-center text-lg mb-3">
+            🔍
+          </div>
+          <p className="font-semibold text-white text-sm mb-1">
+            Find Clinical Trials
+          </p>
+          <p className="text-xs text-gray-400 leading-relaxed mb-2">
+            Browse{" "}
+            <span className="font-semibold text-gray-200">
+              {trialCount}
+            </span>
+            {" "}active trials matched to your patient
+          </p>
+          <span className="text-xs text-gray-400 font-medium
+                           group-hover:text-white transition-colors">
+            Browse & compare trials →
+          </span>
+        </button>
+
       </div>
 
+      {/* 5 · Disclaimer */}
       <p className="text-xs text-gray-400 text-center pb-4">
-        Guideline summaries are AI-generated from official sources. Not a substitute for clinical judgment.
+        AI-generated from {guidelineSummary.sources.join(", ")}.
+        Not a substitute for clinical judgment.
       </p>
+
     </div>
   );
 }

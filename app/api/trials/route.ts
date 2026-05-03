@@ -243,16 +243,20 @@ export async function GET(request: NextRequest) {
     console.log("[Trials] Natural language detected:", q);
 
 // Check cache first
+const refresh = sp.get("refresh") === "true";
 const cacheKey = `trials:v1:${q.toLowerCase().trim().replace(/\s+/g, "-").slice(0, 100)}`;
 try {
-  const cached = await kv.get(cacheKey);
-  if (cached) {
-    console.log("[Trials] Cache hit:", cacheKey);
-    return NextResponse.json(cached);
+  if (!refresh) {
+    const cached = await kv.get(cacheKey);
+    if (cached) {
+      console.log("[Trials] Cache hit:", cacheKey);
+      return NextResponse.json(cached);
+    }
+  } else {
+    console.log("[Trials] Cache bypassed — refresh requested");
   }
-} catch {
-  // Cache miss — continue
-}
+} catch {}
+
     const { searches, reasoning, patientContext } =
       await generateSearchStrategies(q);
 
