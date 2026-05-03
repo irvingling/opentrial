@@ -62,6 +62,7 @@ const trialData = await Promise.all(trials.map(async (trial: any) => {
     maxAge:    eligibility?.maximumAge ?? null,
     sex:       eligibility?.sex ?? null,
     healthyVolunteers:    eligibility?.healthyVolunteers ?? false,
+    status:               status.overallStatus,
     resolvedInterventions,
   };
 }));
