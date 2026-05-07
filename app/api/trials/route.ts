@@ -3,9 +3,6 @@ import { searchTrials, ClinicalTrialsAPIError } from "@/lib/clinicaltrials";
 import Anthropic from "@anthropic-ai/sdk";
 import { kv } from "@vercel/kv";
 
-export async function POST(request: NextRequest) {
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
-
 // ── Detect if query is natural language ───────────────────────────────────────
 function isNaturalLanguage(q: string): boolean {
   const words = q.trim().split(/\s+/);
@@ -22,12 +19,11 @@ function isNaturalLanguage(q: string): boolean {
 }
 
 // ── Use Claude to generate multiple search strategies ─────────────────────────
-async function generateSearchStrategies(naturalQuery: string): Promise<{
-  searches: Array<{
-    condition: string;
-    intervention: string;
-    q: string;
-  }>;
+async function generateSearchStrategies(
+  naturalQuery: string,
+  anthropic: Anthropic
+): Promise<{
+  searches: Array<{ condition: string; intervention: string; q: string }>;
   reasoning: string;
   patientContext: string;
 }> {
@@ -68,17 +64,6 @@ TIER 4 — Disease synonyms and related manifestations
 
 STEP 4 — For REFRACTORY patients weight heavily toward Tier 2 and Tier 3
 
-EXAMPLE of expected depth — for refractory lupus you would generate:
-  "SLE BTK inhibitor", "SLE fenebrutinib",
-  "lupus T-cell engager", "lupus CD3 bispecific",
-  "SLE CAR-T", "lupus anti-CD19",
-  "SLE anti-CD38", "lupus daratumumab",
-  "SLE FcRn inhibitor", "lupus efgartigimod",
-  "lupus complement inhibitor", "lupus nephritis C5",
-  "SLE BAFF APRIL", "lupus telitacicept",
-  "systemic lupus anifrolumab", "cutaneous lupus JAK"
-  — Apply this same depth to WHATEVER disease is presented.
-
 Rules:
 - 15-20 searches for refractory/complex patients
 - 6-10 searches for straightforward queries
@@ -90,7 +75,7 @@ Rules:
 - BAD: "BTK inhibitor", "CAR-T", "RA CD19 CAR-T cell therapy trial"
 - Never add "clinical trial", "therapy", "treatment" to q
 - Reasoning and patientContext: 1 sentence each
-- condition must be the SHORTEST possible disease name: "psoriasis" not "plaque psoriasis", "lupus" not "systemic lupus erythematosus", "Crohn's" not "Crohn's disease"
+- condition must be the SHORTEST possible disease name: "psoriasis" not "plaque psoriasis"
 - Short condition names match more trials in ClinicalTrials.gov
 
 Return ONLY valid JSON, no markdown, no code fences:
@@ -108,10 +93,10 @@ Return ONLY valid JSON, no markdown, no code fences:
 
   try {
     const message = await anthropic.messages.create({
-      model:      "claude-haiku-4-5-20251001",
-      max_tokens: 2048,
+      model:       "claude-haiku-4-5-20251001",
+      max_tokens:  2048,
       temperature: 0,
-      messages:   [{ role: "user", content: prompt }],
+      messages:    [{ role: "user", content: prompt }],
     });
 
     const text = message.content[0].type === "text"
@@ -120,7 +105,7 @@ Return ONLY valid JSON, no markdown, no code fences:
     const cleaned = text
       .replace(/^```json\n?/i, "")
       .replace(/^```\n?/, "")
-      .replace(/```$/,   "")
+      .replace(/```$/, "")
       .trim();
 
     console.log("[Trials] Raw Claude output:", cleaned.slice(0, 500));
@@ -145,31 +130,30 @@ Return ONLY valid JSON, no markdown, no code fences:
   }
 }
 
+// ── Retry helper ──────────────────────────────────────────────────────────────
+async function searchWithRetry(q: string, opts: any) {
+  try {
+    return await searchTrials(q, opts);
+  } catch {
+    await new Promise((r) => setTimeout(r, 500));
+    return await searchTrials(q, opts);
+  }
+}
+
 // ── Run multiple searches and deduplicate ─────────────────────────────────────
 async function multiSearch(
   searches: Array<{ condition: string; intervention: string; q: string }>,
   status?: string[]
 ): Promise<{ studies: any[]; totalCount: number }> {
 
-  // Retry helper — retries once on failure
-async function searchWithRetry(q: string, opts: any) {
-  try {
-    return await searchTrials(q, opts);
-  } catch {
-    // Wait 500ms and retry once
-    await new Promise((r) => setTimeout(r, 500));
-    return await searchTrials(q, opts);
-  }
-}
-
-const results = await Promise.allSettled(
-  searches.map((s) =>
-    searchWithRetry(s.q, {
-      pageSize: 25,
-      status:   status ?? ["RECRUITING", "ACTIVE_NOT_RECRUITING", "NOT_YET_RECRUITING"],
-    })
-  )
-);
+  const results = await Promise.allSettled(
+    searches.map((s) =>
+      searchWithRetry(s.q, {
+        pageSize: 25,
+        status:   status ?? ["RECRUITING", "ACTIVE_NOT_RECRUITING", "NOT_YET_RECRUITING"],
+      })
+    )
+  );
 
   const allStudies: any[] = [];
   for (const result of results) {
@@ -218,8 +202,11 @@ const results = await Promise.allSettled(
   };
 }
 
-// ── Main route ────────────────────────────────────────────────────────────────
+// ── Main GET handler ──────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
+  // Initialize Anthropic INSIDE the handler
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+
   const sp = request.nextUrl.searchParams;
 
   const q            = sp.get("q") ?? "";
@@ -229,6 +216,7 @@ export async function GET(request: NextRequest) {
   const pageToken    = sp.get("pageToken") ?? undefined;
   const status       = sp.get("status")?.split(",").filter(Boolean);
   const phase        = sp.get("phase")?.split(",").filter(Boolean);
+  const refresh      = sp.get("refresh") === "true";
 
   if (!q && !condition && !intervention) {
     return NextResponse.json(
@@ -241,31 +229,30 @@ export async function GET(request: NextRequest) {
   if (q && isNaturalLanguage(q)) {
     console.log("[Trials] Natural language detected:", q);
 
-// Check cache first
-const refresh = sp.get("refresh") === "true";
-const cacheKey = `trials:v1:${q.toLowerCase().trim().replace(/\s+/g, "-").slice(0, 100)}`;
-try {
-  if (!refresh) {
-    const cached = await kv.get(cacheKey);
-    if (cached) {
-      console.log("[Trials] Cache hit:", cacheKey);
-      return NextResponse.json(cached);
-    }
-  } else {
-    console.log("[Trials] Cache bypassed — refresh requested");
-  }
-} catch {}
+    // Check cache first
+    const cacheKey = `trials:v1:${q.toLowerCase().trim().replace(/\s+/g, "-").slice(0, 100)}`;
+    try {
+      if (!refresh) {
+        const cached = await kv.get(cacheKey);
+        if (cached) {
+          console.log("[Trials] Cache hit:", cacheKey);
+          return NextResponse.json(cached);
+        }
+      } else {
+        console.log("[Trials] Cache bypassed — refresh requested");
+      }
+    } catch {}
 
     const { searches, reasoning, patientContext } =
-      await generateSearchStrategies(q);
+      await generateSearchStrategies(q, anthropic);
 
     try {
-      // Step 1 — Extract unique diseases from Claude's searches
+      // Step 1 — Extract unique diseases
       const diseases = [...new Set(
         searches.map((s) => s.condition).filter(Boolean)
       )];
 
-      // Step 2 — Append novel mechanism searches for every disease
+      // Step 2 — Append novel mechanism searches
       const novelMechanisms = [
         "T-cell engager",
         "CD3 bispecific",
@@ -344,24 +331,24 @@ try {
       const { studies, totalCount } = await multiSearch(finalSearches, status);
 
       const response = {
-  studies,
-  totalCount,
-  nextPageToken:  null,
-  aiExtracted:    true,
-  searches:       finalSearches,
-  reasoning,
-  patientContext,
-};
+        studies,
+        totalCount,
+        nextPageToken:  null,
+        aiExtracted:    true,
+        searches:       finalSearches,
+        reasoning,
+        patientContext,
+      };
 
-// Cache for 24 hours
-try {
-  await kv.set(cacheKey, response, { ex: 60 * 60 * 24 });
-  console.log("[Trials] Cached:", cacheKey);
-} catch {
-  // Cache write failed — still return result
-}
+      // Cache for 24 hours
+      try {
+        await kv.set(cacheKey, response, { ex: 60 * 60 * 24 });
+        console.log("[Trials] Cached:", cacheKey);
+      } catch {
+        // Cache write failed — still return result
+      }
 
-return NextResponse.json(response);
+      return NextResponse.json(response);
 
     } catch (err) {
       console.error("[Trials] Multi-search error:", err);
