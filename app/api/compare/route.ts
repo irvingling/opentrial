@@ -4,9 +4,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { kv } from "@vercel/kv";
 import { resolveTrialDrugs } from "@/lib/resolveDrug";
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
-
 export async function POST(request: NextRequest) {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
   const body = await request.json();
   const {
     nctIds,

@@ -57,14 +57,15 @@ interface CompareData {
 }
 
 interface Props {
-  nctIds:         string[];
-  allRankedIds:   string[];
-  query:          string;
-  patientContext: string;
-  activeRegions:  string[];
-  onSelectTrial:  (nctId: string) => void;
-  onShowMore:     (ids: string[]) => void;
-  refresh?:       boolean;
+  nctIds:          string[];
+  allRankedIds:    string[];
+  query:           string;
+  patientContext:  string;
+  activeRegions:   string[];
+  onSelectTrial:   (nctId: string) => void;
+  onShowMore:      (ids: string[]) => void;
+  refresh?:        boolean;
+  prefetchedData?: CompareData | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -88,6 +89,7 @@ export default function TrialCompare({
   onSelectTrial,
   onShowMore,
   refresh = false,
+  prefetchedData = null,
 }: Props) {
   const [data, setData]               = useState<CompareData | null>(null);
   const [loading, setLoading]         = useState(true);
@@ -96,6 +98,14 @@ export default function TrialCompare({
 
   useEffect(() => {
     if (!nctIds.length) return;
+
+    // If prefetched data available — use it directly, no API call
+    if (prefetchedData && !refresh && !patientContext) {
+      setData(prefetchedData);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(false);
     setData(null);
@@ -156,7 +166,7 @@ export default function TrialCompare({
   }
 
   // Deduplicate trials by nctId
-  const seenIds     = new Set<string>();
+  const seenIds      = new Set<string>();
   const uniqueTrials = data.trials.filter((t) => {
     if (seenIds.has(t.nctId)) return false;
     seenIds.add(t.nctId);
@@ -278,7 +288,6 @@ function TrialCard({
           </span>
         </div>
 
-        {/* Attributes grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
           {[
             { label: "Mechanism", value: trial.mechanism },
@@ -293,7 +302,6 @@ function TrialCard({
           ))}
         </div>
 
-        {/* Efficacy highlight */}
         {trial.efficacyHighlight && (
           <div className="bg-blue-50 rounded-lg px-3 py-2 mb-3">
             <p className="text-xs text-blue-700">
@@ -302,7 +310,6 @@ function TrialCard({
           </div>
         )}
 
-        {/* Advantage / Consideration */}
         <div className="grid sm:grid-cols-2 gap-2 mb-3">
           <div className="flex items-start gap-2">
             <span className="text-green-500 text-xs mt-0.5 flex-shrink-0">
@@ -322,7 +329,6 @@ function TrialCard({
           </div>
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-between pt-2
                         border-t border-gray-100">
           <span className="text-xs text-gray-400">

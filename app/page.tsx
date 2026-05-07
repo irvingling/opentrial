@@ -28,6 +28,13 @@ interface SummaryData {
   whyTrial: string[];
 }
 
+interface CompareData {
+  trials:           any[];
+  recommendation:   string;
+  followUpQuestion: string;
+  patientContext:   string;
+}
+
 // ── Search progress steps ─────────────────────────────────────────────────────
 const SEARCH_STEPS: ProgressStep[] = [
   {
@@ -279,9 +286,7 @@ function applyPhaseFilter(trials: Trial[], phases: string[]): Trial[] {
 
 const PAGE_SIZE = 20;
 
-// ── Clarify step ──────────────────────────────────────────────────────────────
-// Separated into its own component so the typewriter hook
-// runs cleanly on mount
+// ── Clarify step component ────────────────────────────────────────────────────
 function ClarifyStep({
   query,
   clarifyInput,
@@ -313,7 +318,6 @@ And — which trial phase are you open to? Select below, or leave blank to see a
 
   const { displayed, done } = useTypewriter(MESSAGE, 10);
 
-  // Auto-focus input once typing is done
   useEffect(() => {
     if (done) {
       setTimeout(() => inputRef.current?.focus(), 150);
@@ -339,7 +343,7 @@ And — which trial phase are you open to? Select below, or leave blank to see a
           </div>
         </div>
 
-        {/* AI response bubble — typewriter */}
+        {/* AI response bubble */}
         <div className="flex items-start gap-3">
           <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center
                           justify-center flex-shrink-0 text-sm font-bold
@@ -349,8 +353,8 @@ And — which trial phase are you open to? Select below, or leave blank to see a
           <div className="bg-white border border-gray-200 rounded-2xl
                           rounded-tl-sm px-5 py-4 flex-1 shadow-sm">
 
-            {/* Typed message — preserve newlines */}
-            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+            <p className="text-sm text-gray-700 leading-relaxed
+                          whitespace-pre-wrap">
               {displayed}
               {!done && (
                 <span className="inline-block w-0.5 h-4 bg-gray-400
@@ -358,9 +362,8 @@ And — which trial phase are you open to? Select below, or leave blank to see a
               )}
             </p>
 
-            {/* Phase options — fade in after typing done */}
             {done && (
-              <div className="mt-5 space-y-2 ">
+              <div className="mt-5 space-y-2">
                 {PHASE_INFO.map((phase) => {
                   const selected = selectedPhases.includes(phase.id);
                   return (
@@ -375,7 +378,6 @@ And — which trial phase are you open to? Select below, or leave blank to see a
                           : "border-gray-100 bg-gray-50 hover:border-gray-300"
                       }`}
                     >
-                      {/* Checkbox */}
                       <div className={`w-4 h-4 rounded border flex-shrink-0
                                        flex items-center justify-center mt-0.5
                                        transition-colors ${
@@ -391,7 +393,6 @@ And — which trial phase are you open to? Select below, or leave blank to see a
                           </svg>
                         )}
                       </div>
-
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className={`text-xs font-semibold ${
@@ -424,7 +425,6 @@ And — which trial phase are you open to? Select below, or leave blank to see a
                     </button>
                   );
                 })}
-
                 {selectedPhases.length === 0 && (
                   <p className="text-xs text-gray-400 pt-1">
                     Nothing selected = show all phases
@@ -432,15 +432,14 @@ And — which trial phase are you open to? Select below, or leave blank to see a
                 )}
               </div>
             )}
-
           </div>
         </div>
 
       </div>
 
-      {/* Input — fade in after typing done */}
+      {/* Input */}
       {done && (
-        <div className="">
+        <div>
           <div className="bg-white border border-gray-200 rounded-2xl
                           shadow-sm overflow-hidden">
             <textarea
@@ -483,7 +482,6 @@ prefers oral, mild renal impairment..."
           </p>
         </div>
       )}
-
     </main>
   );
 }
@@ -501,6 +499,7 @@ export default function HomePage() {
   const clarifyInputRef                     = useRef<HTMLTextAreaElement | null>(null);
   const prefetchDone                        = useRef(false);
   const [searchStep, setSearchStep]         = useState(0);
+  const [compareData, setCompareData]       = useState<CompareData | null>(null);
 
   const [allTrials, setAllTrials]         = useState<Trial[]>([]);
   const [trials, setTrials]               = useState<Trial[]>([]);
@@ -555,6 +554,7 @@ export default function HomePage() {
   // ── Prefetch ──────────────────────────────────────────────────────────────
   async function prefetchSearch(term: string) {
     prefetchDone.current = false;
+    setCompareData(null);
     try {
       const [summaryRes, trialsRes] = await Promise.all([
         fetch(`/api/summary?q=${encodeURIComponent(term)}`),
@@ -585,6 +585,19 @@ export default function HomePage() {
       setTopPicksIds(allIds.slice(0, 5));
       prefetchDone.current = true;
 
+      // Pre-fetch compare in background while clinician reads clarify screen
+      const top5 = allIds.slice(0, 5);
+      if (top5.length > 0) {
+        fetch("/api/compare", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ nctIds: top5, query: term }),
+        })
+          .then((r) => r.json())
+          .then((d) => { if (!d.error) setCompareData(d); })
+          .catch(() => {});
+      }
+
     } catch {}
   }
 
@@ -608,6 +621,7 @@ export default function HomePage() {
     setBottomPanel(null);
     setExtractedCountry(null);
     setHasLocationFilter(false);
+    setCompareData(null);
     prefetchDone.current = false;
 
     try {
@@ -669,6 +683,7 @@ export default function HomePage() {
     setSelectedPhases([]);
     setAllTrials([]);
     setSummaryData(null);
+    setCompareData(null);
     prefetchDone.current = false;
     setExtractedCountry(null);
     setHasLocationFilter(false);
@@ -680,6 +695,9 @@ export default function HomePage() {
     setPatientContext(clarifyInput);
     if (prefetchDone.current) {
       applyFiltersAndSetIds(allTrials, clarifyInput, query, selectedPhases);
+      // If patient added context — clear prefetched compare so it re-runs
+      // with the new context. If no context — use prefetched data.
+      if (clarifyInput.trim()) setCompareData(null);
       setStep("results");
     } else {
       runSearch(query, clarifyInput, selectedPhases);
@@ -706,6 +724,7 @@ export default function HomePage() {
 
   async function handleRefresh() {
     setIsRefreshing(true);
+    setCompareData(null);
     await runSearch(lastSearched, patientContext, selectedPhases, true);
     setIsRefreshing(false);
   }
@@ -773,6 +792,7 @@ export default function HomePage() {
                     setSelectedPhases([]);
                     setAllTrials([]);
                     setSummaryData(null);
+                    setCompareData(null);
                     prefetchDone.current = false;
                     setExtractedCountry(null);
                     setHasLocationFilter(false);
@@ -850,6 +870,7 @@ export default function HomePage() {
                 setSelectedPhases([]);
                 setAllTrials([]);
                 setSummaryData(null);
+                setCompareData(null);
                 prefetchDone.current = false;
                 setExtractedCountry(null);
                 setHasLocationFilter(false);
@@ -1216,6 +1237,7 @@ export default function HomePage() {
               onSelectTrial={(nctId) => setSelectedNctId(nctId)}
               onShowMore={(newIds) => setTopPicksIds(newIds)}
               refresh={isRefreshing}
+              prefetchedData={compareData}
             />
           </div>
         )}
@@ -1264,14 +1286,14 @@ export default function HomePage() {
                 const locs = trial.protocolSection.contactsLocationsModule;
 
                 const trialCountries = (locs?.locations ?? [])
-                  .map((l) => l.country ?? "")
+                  .map((l: any) => l.country ?? "")
                   .filter(Boolean);
                 const isExact  = extractedCountry
                   ? trialCountries.includes(extractedCountry)
                   : false;
                 const isNoData = trialCountries.length === 0;
                 const isNearby = !isExact && !isNoData && extractedCountry
-                  ? trialCountries.some((c) =>
+                  ? trialCountries.some((c: string) =>
                       getNeighborCountries(extractedCountry).includes(c)
                     )
                   : false;
@@ -1291,7 +1313,7 @@ export default function HomePage() {
                           <span className="text-xs font-mono text-gray-400">
                             {id.nctId}
                           </span>
-                          {des?.phases?.map((p) => (
+                          {des?.phases?.map((p: string) => (
                             <span key={p}
                               className="text-xs px-2 py-0.5 bg-gray-100
                                          text-gray-600 rounded-full font-medium">
@@ -1329,7 +1351,7 @@ export default function HomePage() {
                           </p>
                         )}
                         <div className="flex flex-wrap gap-1.5">
-                          {cond?.conditions?.slice(0, 3).map((c) => (
+                          {cond?.conditions?.slice(0, 3).map((c: string) => (
                             <span key={c}
                               className="text-xs px-2.5 py-0.5 bg-purple-50
                                          text-purple-700 border border-purple-100
@@ -1567,7 +1589,6 @@ function PhaseNudge({
         <p className="text-sm text-gray-500 mb-4">
           Would you like to broaden the search?
         </p>
-
         <div className="space-y-2">
           {suggestions.map((s, i) => (
             <button

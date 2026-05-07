@@ -3,9 +3,8 @@ import { searchTrials, ClinicalTrialsAPIError } from "@/lib/clinicaltrials";
 import Anthropic from "@anthropic-ai/sdk";
 import { kv } from "@vercel/kv";
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+export async function POST(request: NextRequest) {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
 // ── Detect if query is natural language ───────────────────────────────────────
 function isNaturalLanguage(q: string): boolean {

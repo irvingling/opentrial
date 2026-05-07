@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { kv } from "@vercel/kv";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
   const url     = new URL(request.url);
   const q       = url.searchParams.get("q") ?? "";
   const refresh = url.searchParams.get("refresh") === "true";
