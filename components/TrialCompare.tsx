@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import EligibilityChecker from "@/components/EligibilityChecker";
 import ProgressSteps, { ProgressStep } from "@/components/ProgressSteps";
 
@@ -96,16 +96,38 @@ export default function TrialCompare({
   const [error, setError]             = useState(false);
   const [compareStep, setCompareStep] = useState(0);
 
+  // Track what we've already fetched to avoid duplicate calls
+  const fetchedKey = useRef<string | null>(null);
+
   useEffect(() => {
     if (!nctIds.length) return;
 
-    // If prefetched data available — use it directly, no API call
-    if (prefetchedData && !refresh && !patientContext) {
+    // Build a key representing this exact request
+    const key = `${nctIds.join(",")}|${query}|${patientContext}|${refresh}`;
+
+    // ── Use prefetched data if:
+    //    - we have it
+    //    - not a manual refresh
+    //    - no patient context (prefetch was done without context)
+    //    - we haven't already loaded data for a different key
+    if (
+      prefetchedData &&
+      !refresh &&
+      !patientContext &&
+      fetchedKey.current !== key
+    ) {
+      fetchedKey.current = key;
       setData(prefetchedData);
       setLoading(false);
       return;
     }
 
+    // ── Don't re-fetch if we already have data for this exact key
+    if (fetchedKey.current === key && data) {
+      return;
+    }
+
+    fetchedKey.current = key;
     setLoading(true);
     setError(false);
     setData(null);
@@ -132,7 +154,12 @@ export default function TrialCompare({
         else setData(d);
       })
       .catch(() => setError(true))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      });
 
     return () => {
       clearTimeout(t1);
@@ -312,17 +339,13 @@ function TrialCard({
 
         <div className="grid sm:grid-cols-2 gap-2 mb-3">
           <div className="flex items-start gap-2">
-            <span className="text-green-500 text-xs mt-0.5 flex-shrink-0">
-              ✓
-            </span>
+            <span className="text-green-500 text-xs mt-0.5 flex-shrink-0">✓</span>
             <p className="text-xs font-medium text-gray-700">
               {trial.keyAdvantage}
             </p>
           </div>
           <div className="flex items-start gap-2">
-            <span className="text-amber-500 text-xs mt-0.5 flex-shrink-0">
-              ⚠
-            </span>
+            <span className="text-amber-500 text-xs mt-0.5 flex-shrink-0">⚠</span>
             <p className="text-xs font-medium text-gray-700">
               {trial.keyConsideration}
             </p>
@@ -333,9 +356,7 @@ function TrialCard({
                         border-t border-gray-100">
           <span className="text-xs text-gray-400">
             Best for:{" "}
-            <span className="text-gray-600 font-medium">
-              {trial.bestFor}
-            </span>
+            <span className="text-gray-600 font-medium">{trial.bestFor}</span>
           </span>
           <div className="flex items-center gap-2">
             {trial.priorBiologicAllowed === true && (
