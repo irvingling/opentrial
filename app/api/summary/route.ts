@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { kv } from "@vercel/kv";
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+
   const url     = new URL(request.url);
   const q       = url.searchParams.get("q") ?? "";
   const refresh = url.searchParams.get("refresh") === "true";
@@ -12,7 +13,6 @@ export async function POST(request: NextRequest) {
 
   const cacheKey = `summary:v1:${q.toLowerCase().trim().replace(/\s+/g, "-").slice(0, 100)}`;
 
-  // Check cache unless refresh requested
   if (!refresh) {
     try {
       const cached = await kv.get(cacheKey);
@@ -30,7 +30,6 @@ export async function POST(request: NextRequest) {
   const prompt = `A clinician searched for clinical trials: "${q}"
 
 Return ONLY raw JSON (no markdown, no code fences) with this exact structure:
-
 {
   "tags": [
     { "label": "string", "color": "blue" }
@@ -55,7 +54,7 @@ Rules:
 - whyTrial: 3-4 reasons a trial could benefit this specific patient`;
 
   try {
-    const msg = await client.messages.create({
+    const msg = await anthropic.messages.create({
       model:       "claude-sonnet-4-5-20250929",
       max_tokens:  1024,
       temperature: 0,
@@ -71,7 +70,6 @@ Rules:
 
     const parsed = JSON.parse(text);
 
-    // Cache for 6 hours
     try {
       await kv.set(cacheKey, parsed, { ex: 60 * 60 * 6 });
       console.log("[Summary] Cached:", cacheKey);
