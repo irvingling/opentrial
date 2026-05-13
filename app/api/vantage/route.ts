@@ -140,7 +140,7 @@ const CONDITION_HINTS = {
     "atopic dermatitis", "eczema", "atopic", "atd", "easi", "iga", "pp-nrs",
     "dupilumab", "tralokinumab", "lebrikizumab", "nemolizumab",
     "upadacitinib", "abrocitinib", "baricitinib",
-    "tilrekimig", "ompekimig", "amlitelimab", "galvokimig",
+    "tilrekimig", "ompekimig", "amlitelimab", "galvokimig", "pfizer trispecific",
     "zumilokibart", "afimkibart", "soquelitinib",
   ],
   pso: [
@@ -447,7 +447,11 @@ export async function POST(request: NextRequest) {
       (w) => aliasExpanded.toLowerCase().includes(w)
     );
     let resolvedQuery = aliasExpanded;
-    if (hasComparisonWords && staticMatched.length < 2) {
+    // Only call AI resolution if static expansion didn't already resolve at least one drug
+    // AND the query has comparison intent. Never call it if static already found matches —
+    // the AI may override correct static resolutions with wrong training-data associations.
+    const alreadyResolved = staticMatched.length >= 1;
+    if (hasComparisonWords && !alreadyResolved) {
       resolvedQuery = await aiResolveDrugNames(rawQuery, allDrugNames, client);
       resolvedQuery = expandAliases(resolvedQuery);
     }
