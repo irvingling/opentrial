@@ -1,268 +1,186 @@
+// app/api/emerging/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { kv } from "@vercel/kv";
+import { getSlideEvidence } from "@/lib/slideData";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
-async function searchPubMed(query: string): Promise<string> {
-  try {
-    const searchUrl =
-      `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi` +
-      `?db=pubmed&term=${encodeURIComponent(query)}` +
-      `&retmax=8&retmode=json&sort=relevance`;
-
-    const searchRes = await fetch(searchUrl, {
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!searchRes.ok) return "";
-
-    const searchData = await searchRes.json();
-    const ids: string[] = searchData.esearchresult?.idlist ?? [];
-    if (ids.length === 0) return "";
-
-    const fetchUrl =
-      `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi` +
-      `?db=pubmed&id=${ids.join(",")}&retmode=text&rettype=abstract`;
-
-    const fetchRes = await fetch(fetchUrl, {
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!fetchRes.ok) return "";
-
-    return (await fetchRes.text()).slice(0, 6000);
-  } catch {
-    return "";
-  }
-}
-
-async function searchCTResults(condition: string): Promise<string> {
-  try {
-    const url =
-      `https://clinicaltrials.gov/api/v2/studies` +
-      `?query.cond=${encodeURIComponent(condition)}` +
-      `&filter.overallStatus=COMPLETED,TERMINATED` +
-      `&pageSize=15` +
-      `&format=json`;
-
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return "";
-
-    const data    = await res.json();
-    const studies = data.studies ?? [];
-
-    return studies.slice(0, 10).map((s: any) => {
-      const id      = s.protocolSection.identificationModule;
-      const status  = s.protocolSection.statusModule;
-      const phases  = s.protocolSection.designModule?.phases?.join(", ") ?? "";
-      const summary = s.protocolSection.descriptionModule?.briefSummary ?? "";
-      return [
-        `NCT: ${id.nctId}`,
-        `Status: ${status.overallStatus}`,
-        `Title: ${id.briefTitle}`,
-        `Phase: ${phases}`,
-        `Summary: ${summary.slice(0, 300)}`,
-      ].join(" | ");
-    }).join("\n---\n");
-  } catch {
-    return "";
-  }
-}
-
-async function searchSemanticScholar(query: string): Promise<string> {
-  try {
-    const url =
-      `https://api.semanticscholar.org/graph/v1/paper/search` +
-      `?query=${encodeURIComponent(query)}` +
-      `&limit=5` +
-      `&fields=title,abstract,year,venue,externalIds`;
-
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return "";
-
-    const data   = await res.json();
-    const papers = data.data ?? [];
-
-    return papers.map((p: any) => {
-      const pmid = p.externalIds?.PubMed
-        ? `PMID:${p.externalIds.PubMed}` : "";
-      return [
-        `Title: ${p.title}`,
-        `Year: ${p.year} | Venue: ${p.venue ?? "Unknown"}${pmid ? ` | ${pmid}` : ""}`,
-        `Abstract: ${(p.abstract ?? "").slice(0, 400)}`,
-      ].join("\n");
-    }).join("\n---\n");
-  } catch {
-    return "";
-  }
-}
-
 export async function GET(request: NextRequest) {
-  const url     = new URL(request.url);
-  const q       = url.searchParams.get("q") ?? "";
-  const refresh = url.searchParams.get("refresh") === "true";
+  const url       = new URL(request.url);
+  const q         = url.searchParams.get("q") ?? "";
+  const refresh   = url.searchParams.get("refresh") === "true";
 
   if (!q) return NextResponse.json({ error: "No query" }, { status: 400 });
 
-  const cacheKey = `emerging:v3:${q.toLowerCase().trim()
-    .replace(/\s+/g, "-").slice(0, 100)}`;
+  const cacheKey = `emerging:v3:${q.toLowerCase().trim().replace(/\s+/g, "-").slice(0, 100)}`;
 
   if (!refresh) {
     try {
       const cached = await kv.get(cacheKey);
-      if (cached) {
-        console.log("[Emerging] Cache hit");
-        return NextResponse.json(cached);
-      }
+      if (cached) { console.log("[Emerging] Cache hit"); return NextResponse.json(cached); }
     } catch {}
   }
 
-  console.log("[Emerging] Searching for:", q);
+  // ── SlideData emerging as baseline ────────────────────────────────────────
+  const slideData    = getSlideEvidence(q);
+  const slideEmerging = slideData?.emerging?.drugs ?? [];
+  const slideTerminated = slideData?.emerging?.terminated ?? [];
 
-  const [pubmedData, ctResults, semanticData, failedData] = await Promise.all([
-    searchPubMed(`${q} phase 2 clinical trial efficacy`),
-    searchCTResults(q),
-    searchSemanticScholar(`${q} phase 2 clinical trial`),
-    searchPubMed(`${q} failed discontinued terminated primary endpoint`),
-  ]);
+  const slideContext = slideEmerging.length > 0 ? `
+CURATED EMERGING DATA (verified, use exact numbers):
+${slideEmerging.map((d: any) => `
+- ${d.drugName} (${d.drugClass}, ${d.phase}): ${d.keyResult}
+  Metrics: ${JSON.stringify(d.metrics)}
+  PBO: ${JSON.stringify(d.placeboMetrics)}
+  Source: ${d.source}
+  Confidence: ${d.confidence} — ${d.confidenceReason}
+  Safety: ${(d.safetyBullets ?? []).join("; ")}
+`).join("")}
 
-  const hasRealData = pubmedData.length > 0
-    || ctResults.length > 0
-    || semanticData.length > 0;
+TERMINATED/DID NOT PROGRESS (verified):
+${slideTerminated.map((d: any) => `
+- ${d.drugName} (${d.drugClass}): ${d.reason} — ${d.outcome}
+  Clinical insight: ${d.clinicalInsight}
+`).join("")}
+` : "";
 
-  const prompt = `You are a clinical evidence synthesis expert analyzing the emerging evidence landscape for: "${q}"
+  const today = new Date().toISOString().split("T")[0];
 
-${hasRealData ? `
-PUBMED DATA:
-${pubmedData || "No results"}
+  const searchPrompt = `You are a clinical intelligence analyst. Today is ${today}.
 
-CLINICALTRIALS.GOV COMPLETED/TERMINATED TRIALS:
-${ctResults || "No results"}
+Search for the latest clinical trial data for emerging drugs in: "${q}"
 
-SEMANTIC SCHOLAR:
-${semanticData || "No results"}
+Find:
+1. Phase 2/2b/3 trials with results announced in the last 18 months
+2. Press releases from pharmaceutical companies about trial readouts
+3. Conference presentations (AAD, EADV, ACR, DDW, ESMO, ASCO, ASH 2024-2025)
+4. New drug approvals or regulatory submissions
 
-FAILED/DISCONTINUED SEARCH:
-${failedData || "No results"}
-` : "No real-time data retrieved. Use training knowledge only for well-documented findings."}
+${slideContext}
 
-Categorize emerging evidence into 4 tiers:
+For each emerging drug found (including curated data above), return structured data.
+For curated drugs: use the exact numbers provided above.
+For newly found drugs: extract exact numbers from the source.
 
-TIER 1 — PUBLISHED: Drugs with actual numbers from peer-reviewed papers or posted results
-- Must have REAL numbers (%, p-value, n) you can cite
-- Only include if you can name the source
-
-TIER 2 — REPORTED POSITIVE: Company announced positive results but no published numbers yet
-- "Met primary endpoint", "positive top-line data" etc
-- No invented numbers — just the claim and source
-
-TIER 3 — WATCH LIST: Active Phase 1/2 with readout expected
-- No efficacy data yet but mechanistically interesting
-
-TIER 4 — DID NOT PROGRESS: Drugs that failed primary endpoint OR discontinued development
-- Phase 2 or 3 trials that missed primary endpoint
-- Drugs where company discontinued development after disappointing results
-- Include the REASON — was it efficacy failure, safety, or business decision?
-- Include clinical insight: what does this teach us about the target/mechanism?
-- Examples: drugs that failed in this indication even if approved elsewhere
-
-Return ONLY valid JSON, no markdown:
+Return ONLY valid JSON:
 {
   "condition": "string",
-  "lastUpdated": "${new Date().toISOString().split("T")[0]}",
-  "published": [
+  "lastSearched": "${today}",
+  "emerging": [
+    {
+      "drugName": "string",
+      "company": "string",
+      "drugClass": "string",
+      "mechanism": "1 sentence",
+      "phase": "Phase 2b",
+      "primaryMetric": "EASI-75",
+      "primaryMetricValue": 65,
+      "placeboValue": 20,
+      "timepoint": "Week 16",
+      "trialName": "trial name",
+      "n": 240,
+      "source": "conference/journal/press release",
+      "sourceUrl": "URL if available",
+      "announcementDate": "YYYY-MM-DD or null",
+      "confidence": "high | medium | low",
+      "confidenceReason": "brief reason",
+      "keyInsight": "1 sentence clinical interpretation",
+      "tier": "published | reported | watchlist",
+      "safetyNotes": ["brief safety note"],
+      "metrics": { "EASI-75": 65, "IGA 0/1": 42 },
+      "placeboMetrics": { "EASI-75": 20, "IGA 0/1": 14 }
+    }
+  ],
+  "terminated": [
     {
       "drugName": "string",
       "drugClass": "string",
-      "phase": "string",
-      "mechanism": "string",
-      "keyResult": "string — exact stat with context",
-      "endpoint": "string",
-      "trialName": "string or null",
-      "n": number or null,
-      "comparator": "string or null",
-      "source": "string",
-      "pubmedId": "string or null",
-      "confidence": "high" or "medium",
-      "confidenceReason": "string",
-      "sponsorNote": "string or null"
+      "reason": "Safety | Efficacy failure | Business decision",
+      "lastKnownMetrics": { "EASI-75": 36 },
+      "lastKnownPlaceboMetrics": { "EASI-75": 13 },
+      "lastKnownTimepoint": "Week 24",
+      "clinicalInsight": "1 sentence"
     }
   ],
-  "reportedPositive": [
-    {
-      "drugName": "string",
-      "drugClass": "string",
-      "mechanism": "string",
-      "phase": "string",
-      "announcement": "string",
-      "trialName": "string or null",
-      "announcementDate": "string or null",
-      "source": "string",
-      "caution": "string",
-      "expectedPublicationDate": "string or null"
-    }
-  ],
-  "watchList": [
-    {
-      "drugName": "string",
-      "drugClass": "string",
-      "mechanism": "string",
-      "phase": "string",
-      "nctId": "string or null",
-      "rationale": "string",
-      "expectedReadout": "string or null",
-      "sponsor": "string or null",
-      "status": "Recruiting" or "Active" or "Not yet recruiting"
-    }
-  ],
-  "didNotProgress": [
-    {
-      "drugName": "string",
-      "drugClass": "string",
-      "mechanism": "string",
-      "phase": "string — Phase at which development stopped",
-      "reason": "Efficacy failure" or "Safety" or "Business decision" or "Partial response",
-      "trialName": "string or null",
-      "whatWasTested": "string — brief description of what was being evaluated",
-      "outcome": "string — what happened e.g. missed PASI 75 primary endpoint at Week 16",
-      "year": "string or null",
-      "source": "string",
-      "clinicalInsight": "string — what this failure teaches us about this mechanism or target in this disease"
-    }
-  ],
-  "evidenceSummary": "2-3 sentences summarizing the full emerging landscape including failures",
-  "dataNote": "string — honest assessment of data quality and what is training knowledge vs retrieved"
+  "searchSummary": "2 sentences on what was found"
 }
 
-RULES:
-- NEVER invent numbers for published tier
-- didNotProgress is IMPORTANT — clinicians need to know what NOT to wait for
-- Include drugs discontinued for efficacy OR safety reasons
-- clinicalInsight in didNotProgress should be genuinely useful e.g. "This suggests IL-22 may not be the right target in plaque psoriasis" or "Safety signal suggests on-target toxicity of this mechanism"
-- If a drug failed in one indication but is approved in another — include it with context
-- Be comprehensive — a good failure list is as valuable as the success list`;
+tier definitions:
+- published: peer-reviewed Phase 2/3 data available
+- reported: press release / conference — not yet peer-reviewed
+- watchlist: recruiting or active, no data yet
+
+Sort by: published first, then reported, then watchlist. Within each tier, sort by primaryMetricValue descending.`;
 
   try {
-    const message = await anthropic.messages.create({
-      model:       "claude-sonnet-4-5-20250929",
-      max_tokens:  4000,
-      temperature: 0,
-      messages:    [{ role: "user", content: prompt }],
+    const response = await anthropic.messages.create({
+      model:      "claude-opus-4-5",
+      max_tokens: 4000,
+      tools: [{ type: "web_search_20250305" as any, name: "web_search" }],
+      messages:   [{ role: "user", content: searchPrompt }],
     });
 
-    const text    = message.content[0].type === "text" ? message.content[0].text : "";
-    const cleaned = text
-      .replace(/^```json\n?/i, "")
-      .replace(/^```\n?/, "")
-      .replace(/```$/, "")
-      .trim();
+    // Collect all text blocks
+    let allText = "";
+    for (const block of response.content) {
+      if (block.type === "text") allText += block.text + "\n";
+    }
 
-    const parsed = JSON.parse(cleaned);
-
-    // Cache for 24 hours
+    // Parse the JSON from the response
+    const cleaned = allText.replace(/^```json\n?/i,"").replace(/^```\n?/,"").replace(/```$/,"").trim();
+    let parsed: any;
     try {
-      await kv.set(cacheKey, parsed, { ex: 60 * 60 * 24 });
-    } catch {}
+      // Find JSON object in the text
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    } catch {
+      parsed = null;
+    }
 
+    if (!parsed) {
+      // Fall back to slideData only if web search parsing fails
+      return NextResponse.json({
+        condition:     q,
+        lastSearched:  today,
+        emerging:      slideEmerging.map((d: any) => ({
+          drugName:           d.drugName,
+          company:            d.sponsorNote ?? "",
+          drugClass:          d.drugClass,
+          mechanism:          d.mechanism,
+          phase:              d.phase,
+          primaryMetric:      d.endpoint,
+          primaryMetricValue: d.primaryMetricValue,
+          placeboValue:       null,
+          timepoint:          d.endpoint?.includes("Week") ? d.endpoint.split("at ").pop() ?? "" : "",
+          trialName:          d.trialName ?? "",
+          n:                  d.n,
+          source:             d.source,
+          sourceUrl:          null,
+          announcementDate:   null,
+          confidence:         d.confidence,
+          confidenceReason:   d.confidenceReason,
+          keyInsight:         d.keyResult,
+          tier:               "published",
+          safetyNotes:        d.safetyBullets ?? [],
+          metrics:            d.metrics ?? {},
+          placeboMetrics:     d.placeboMetrics ?? {},
+        })),
+        terminated:    slideTerminated.map((d: any) => ({
+          drugName:             d.drugName,
+          drugClass:            d.drugClass,
+          reason:               d.reason,
+          lastKnownMetrics:     d.lastKnownMetrics ?? {},
+          lastKnownPlaceboMetrics: d.lastKnownPlaceboMetrics ?? {},
+          lastKnownTimepoint:   d.lastKnownTimepoint ?? "",
+          clinicalInsight:      d.clinicalInsight,
+        })),
+        searchSummary: "Using curated data — web search unavailable.",
+        fromSlideDataOnly: true,
+      });
+    }
+
+    try { await kv.set(cacheKey, parsed, { ex: 60 * 60 * 6 }); } catch {} // 6hr cache for emerging
     return NextResponse.json(parsed);
 
   } catch (err) {
