@@ -509,21 +509,36 @@ export async function POST(request: NextRequest) {
       emergingDrugs   = filterOral(emergingDrugs);
       terminatedDrugs = filterOral(terminatedDrugs);
     }
-    // Auto-select best shared endpoint for comparison queries
+// auto-select best shared endpoint BEFORE building drug lists
     if (intent === "comparison" && comparisonDrugs.length >= 2) {
-      const allBuilt = [...approvedDrugs, ...emergingDrugs];
-      const drugA = allBuilt.find((d) => norm(d.name) === norm(comparisonDrugs[0]));
-      const drugB = allBuilt.find((d) => norm(d.name) === norm(comparisonDrugs[1]));
-      if (drugA && drugB) {
-        const preferred = isPso
-          ? ["PASI 100", "PASI 90", "PASI 75", "IGA 0/1"]
-          : ["EASI-75", "EASI-90", "IGA 0/1", "PP-NRS ≥4"];
+      const isPso = condition === "Plaque Psoriasis";
+      const preferred = isPso
+        ? ["PASI 100", "PASI 90", "PASI 75", "IGA 0/1"]
+        : ["EASI-75", "EASI-90", "IGA 0/1", "PP-NRS ≥4"];
+      const allRaw = [
+        ...(slideData?.evidence?.drugs ?? slideData?.drugs ?? []),
+        ...(slideData?.emerging?.drugs ?? slideData?.emerging ?? []),
+      ];
+      const rawA = allRaw.find((d: any) => norm(d.name) === norm(comparisonDrugs[0]));
+      const rawB = allRaw.find((d: any) => norm(d.name) === norm(comparisonDrugs[1]));
+      if (rawA && rawB) {
         const shared = preferred.find((ep) =>
-          typeof (drugA.metrics?.[ep]) === "number" &&
-          typeof (drugB.metrics?.[ep]) === "number"
+          typeof rawA.metrics?.[ep] === "number" &&
+          typeof rawB.metrics?.[ep] === "number"
         );
         if (shared) endpoint = shared;
       }
+    }
+
+    // NOW build drug lists with the correct endpoint
+    let { approvedDrugs, emergingDrugs, terminatedDrugs } = buildDrugLists(slideData, endpoint);
+    const hasNonOralHighlight = highlightedDrugs.some((h) =>
+      !ORAL_TERMS.some((t) => h.toLowerCase().includes(t))
+    );
+    if (isOralQuery && !hasNonOralHighlight) {
+      approvedDrugs   = filterOral(approvedDrugs);
+      emergingDrugs   = filterOral(emergingDrugs);
+      terminatedDrugs = filterOral(terminatedDrugs);
     }
     const guidelineSummary = buildGuidelineSummary(condition, isOralQuery);
     const references       = collectReferences([...approvedDrugs, ...emergingDrugs, ...terminatedDrugs]);
