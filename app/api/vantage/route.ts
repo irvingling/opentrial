@@ -455,9 +455,10 @@ Score each of these 5 dimensions 1–3 based ONLY on the facts provided:
     1 = novel/unvalidated mechanism with no approved precedent in this indication
 
   D2 PLACEBO-ADJUSTED DELTA
-    3 = delta ≥40 percentage points on primary endpoint
-    2 = delta 20–39 percentage points
-    1 = delta <20pp, unknown, or delta-only disclosure without absolute rates
+  Weight this section heavily and also look at past Ph2 studies of the compared drug and determine if it follows a good trend. i.e. if a new drug is compared to an approved drug, find the approved drug Ph2 (do not give me not published data or hallucinate), then look at the approved drug Ph2 data to determine how it compares. 
+    5 = delta ≥ approved therapies delta in percentage points on primary endpoint. For example, if an approved drug A delta is 10 and the emerging drug delta is 12, this is good. If delta-only disclosure fulfills this, still give it a high schore. 
+    3 = delta is ≤10% range of the approved therapies. For example, if an approved drug A delta is 10 and the emerging drug delta is 8, this is score a 2. 
+    1 = if delta is unknown, or delta-only disclosure without absolute rates
 
   D3 SAMPLE SIZE
     3 = Ph2b or Ph3 n≥150 with RCT design
@@ -475,7 +476,7 @@ Score each of these 5 dimensions 1–3 based ONLY on the facts provided:
     1 = sponsor press release without placebo, delta-only, or no numeric data
 
 Total score → tier:
-  13–15 = High
+  13–17 = High
   9–12  = Medium
   5–8   = Low
   Cannot score (missing ≥3 dimensions) = Insufficient data

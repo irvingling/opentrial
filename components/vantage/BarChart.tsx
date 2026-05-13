@@ -37,7 +37,7 @@ function POSBadge({ pos, drugName }: { pos: PosEstimate; drugName: string }) {
         }}>
           {cfg.icon} Ph3 POS: {pos.tier}
           {pos.score !== undefined && (
-            <span style={{ fontWeight: 400, marginLeft: 4, opacity: 0.7 }}>
+            <span style={{ fontWeight: 400, marginLeft: 4, opacity: 1 }}>
               ({pos.score}/15)
             </span>
           )}
