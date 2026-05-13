@@ -27,35 +27,33 @@ const TICKS = Array.from(
 // ── Data builders ─────────────────────────────────────────────────────────────
 
 function buildApproved(drugs: DrugReference[]): TimelineEvent[] {
-  return drugs
-    .map((d) => {
-      const loe = LOE_DATA[d.name.toLowerCase()];
-      if (!loe) return null;
-      return {
-        name: d.name, brandName: d.brandName ?? null,
-        drugClass: d.drugClass, tier: "approved" as const,
-        year: loe.loeYear, label: loe.loeNotes,
-        color: getColor(d.drugClass), sourceUrl: d.sourceUrl ?? null,
-      };
-    })
-    .filter((e): e is TimelineEvent => e !== null)
-    .sort((a, b) => a.year - b.year);
+  const events: TimelineEvent[] = [];
+  for (const d of drugs) {
+    const loe = LOE_DATA[d.name.toLowerCase()];
+    if (!loe) continue;
+    events.push({
+      name: d.name, brandName: d.brandName ?? null, drugClass: d.drugClass,
+      tier: "approved",
+      year: loe.loeYear, label: loe.loeNotes,
+      color: getColor(d.drugClass), sourceUrl: d.sourceUrl ?? null,
+    });
+  }
+  return events.sort((a, b) => a.year - b.year);
 }
 
 function buildEmerging(drugs: DrugReference[]): TimelineEvent[] {
-  return drugs
-    .map((d) => {
-      const rd = READOUT_DATA[d.name.toLowerCase()];
-      if (!rd) return null;
-      return {
-        name: d.name, brandName: d.brandName ?? null,
-        drugClass: d.drugClass, tier: "emerging" as const,
-        year: rd.readoutYear, label: rd.readoutLabel,
-        color: getColor(d.drugClass), sourceUrl: d.sourceUrl ?? null,
-      };
-    })
-    .filter((e): e is TimelineEvent => e !== null)
-    .sort((a, b) => a.year - b.year);
+  const events: TimelineEvent[] = [];
+  for (const d of drugs) {
+    const rd = READOUT_DATA[d.name.toLowerCase()];
+    if (!rd) continue;
+    events.push({
+      name: d.name, brandName: d.brandName ?? null, drugClass: d.drugClass,
+      tier: "emerging",
+      year: rd.readoutYear, label: rd.readoutLabel,
+      color: getColor(d.drugClass), sourceUrl: d.sourceUrl ?? null,
+    });
+  }
+  return events.sort((a, b) => a.year - b.year);
 }
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
