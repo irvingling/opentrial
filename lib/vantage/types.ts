@@ -2,7 +2,9 @@
 
 export interface PosEstimate {
   tier: "High" | "Medium" | "Low" | "Insufficient data";
-  riskFactors: string[];  // 2–4 bullet points explaining the assessment
+  score?: number;
+  dimensionScores?: { D1: number; D2: number; D3: number; D4: number; D5: number };
+  riskFactors: string[];
 }
 
 export interface DrugReference {

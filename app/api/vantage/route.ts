@@ -12,6 +12,8 @@ type EvidenceLevel =
 
 interface PosEstimate {
   tier: "High" | "Medium" | "Low" | "Insufficient data";
+  score?: number;
+  dimensionScores?: { D1: number; D2: number; D3: number; D4: number; D5: number };
   riskFactors: string[];
 }
 
@@ -42,7 +44,7 @@ interface DrugReference {
     deltaValue?: number | null; timepoint?: string;
     note?: string; source?: string | null;
   }>;
- posEstimate?: PosEstimate | null;
+  posEstimate?: PosEstimate | null;
   trials?: Array<{
     name: string;
     phase: string;
@@ -443,21 +445,49 @@ STRICT RULES for commentary:
 8. ciCommentary only when intent is "comparison". Empty string otherwise.
 9. Write for CSO / medical director audience.
 
-RULES for POS estimates:
-- Assess each emerging drug's probability of Phase 3 success
-- Use these inputs: mechanism class historical success rates, placebo-adjusted delta size,
-  sample size (infer from n if available, or flag as unknown), endpoint continuity,
-  disclosure quality (evidenceLevel + numericDisclosure), phase of development
-- Tier definitions:
-    High: strong class prior + large delta + adequate n + full disclosure + endpoint continuity
-    Medium: moderate class prior OR limited n OR partial disclosure OR novel mechanism
-    Low: very small n OR no numeric data OR novel unvalidated mechanism OR safety signals
-    Insufficient data: no public efficacy data to assess
-- riskFactors: 3–4 short bullets explaining the specific factors driving the tier
-  e.g. "IL-13 class has ~65% Ph2→Ph3 translation rate in moderate-to-severe AD"
-  e.g. "n=~40 is underpowered for robust efficacy signal; larger Ph2b needed"
-  e.g. "Placebo-adjusted delta of 52.6% is competitive but from a single-arm element"
-  e.g. "Novel IL-13 × IL-17A/F combination has no direct precedent — class risk uncertain"
+RULES for POS estimates — follow this rubric MECHANICALLY for every emerging drug:
+
+Score each of these 5 dimensions 1–3 based ONLY on the facts provided:
+
+  D1 CLASS PRIOR
+    3 = mechanism class has ≥2 approved drugs with consistent Ph3 success (e.g. IL-23p19, IL-13, JAK1)
+    2 = mechanism class has 1 approved drug OR mixed Ph3 record (e.g. TYK2, IL-31RA)
+    1 = novel/unvalidated mechanism with no approved precedent in this indication
+
+  D2 PLACEBO-ADJUSTED DELTA
+    3 = delta ≥40 percentage points on primary endpoint
+    2 = delta 20–39 percentage points
+    1 = delta <20pp, unknown, or delta-only disclosure without absolute rates
+
+  D3 SAMPLE SIZE
+    3 = Ph2b or Ph3 n≥150 with RCT design
+    2 = Ph2a/2b n=50–149 OR single-arm n≥100
+    1 = n<50 OR single-arm n<100 OR no n disclosed
+
+  D4 ENDPOINT CONTINUITY
+    3 = same primary endpoint as standard Ph3 (PASI 90/IGA 0/1 for PsO; EASI-75/IGA 0/1 for AtD)
+    2 = related endpoint used (e.g. sPGA instead of IGA, EASI-50 instead of EASI-75)
+    1 = non-standard endpoint OR endpoint not yet confirmed for Ph3
+
+  D5 DISCLOSURE QUALITY
+    3 = FDA label or peer-reviewed publication with full data tables
+    2 = medical meeting abstract or topline press release with placebo data
+    1 = sponsor press release without placebo, delta-only, or no numeric data
+
+Total score → tier:
+  13–15 = High
+  9–12  = Medium
+  5–8   = Low
+  Cannot score (missing ≥3 dimensions) = Insufficient data
+
+For each drug output:
+- tier: the tier from the rubric above
+- score: the total numeric score (integer)
+- dimensionScores: { D1, D2, D3, D4, D5 } each as integer 1–3
+- riskFactors: 3–4 bullets explaining the dimension scores in plain clinical language
+  e.g. "IL-23p19 class prior: strong — risankizumab and guselkumab both successful in Ph3 (D1: 3)"
+  e.g. "Sample size: Ph2a n=84, single-arm elements — insufficient for robust signal (D3: 1)"
+  e.g. "Disclosure: sponsor press release only, no placebo data published (D5: 1)"
 
 Respond ONLY with valid JSON (no markdown fences):
 {
@@ -465,7 +495,12 @@ Respond ONLY with valid JSON (no markdown fences):
   "ciCommentary": "...",
   "safetyCommentary": "...",
   "posEstimates": {
-    "drugName": { "tier": "High|Medium|Low|Insufficient data", "riskFactors": ["...","...","..."] }
+    "drugName": {
+      "tier": "High|Medium|Low|Insufficient data",
+      "score": 12,
+      "dimensionScores": { "D1": 3, "D2": 3, "D3": 2, "D4": 2, "D5": 2 },
+      "riskFactors": ["...","...","..."]
+    }
   }
 }`;
 

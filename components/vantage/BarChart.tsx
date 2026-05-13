@@ -36,6 +36,11 @@ function POSBadge({ pos, drugName }: { pos: PosEstimate; drugName: string }) {
           padding: "2px 9px", borderRadius: 9999,
         }}>
           {cfg.icon} Ph3 POS: {pos.tier}
+          {pos.score !== undefined && (
+            <span style={{ fontWeight: 400, marginLeft: 4, opacity: 0.7 }}>
+              ({pos.score}/15)
+            </span>
+          )}
         </span>
         <span style={{ fontSize: 11, color: cfg.text }}>
           {drugName} · Phase 3 probability of success assessment
