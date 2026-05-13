@@ -42,7 +42,16 @@ interface DrugReference {
     deltaValue?: number | null; timepoint?: string;
     note?: string; source?: string | null;
   }>;
-  posEstimate?: PosEstimate | null;
+ posEstimate?: PosEstimate | null;
+  trials?: Array<{
+    name: string;
+    phase: string;
+    n?: number | null;
+    comparator?: string | null;
+    timepoint?: string | null;
+    allMetrics?: Record<string, number | null> | null;
+    allPlaceboMetrics?: Record<string, number | null> | null;
+  }> | null;
 }
 
 interface ReferencesBlock { label: string; url: string; type: string; }

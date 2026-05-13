@@ -741,8 +741,9 @@ const psoriasis = {
   ],
 
   emerging: [
-    {
+{
       name: "zasocitinib",
+      aliases: ["TAK-279"],
       company: "Takeda",
       drugClass: "TYK2",
       mechanism: "Next-generation highly selective oral TYK2 allosteric inhibitor; >1-million-fold selectivity for TYK2 vs JAK1/2/3. Maintains 24-hour inhibition of IL-23 and other core disease-driving immune pathways.",
@@ -754,10 +755,10 @@ const psoriasis = {
       primaryMetricValue: pct(61.3),
       placeboValue: pct(5.0),
       metrics: {
-        "PASI 75":  pct(71.4),   // sPGA 0/1 used as co-primary; PASI 75 also co-primary
+        "PASI 75":  pct(71.4),
         "PASI 90":  pct(61.3),
         "PASI 100": pct(33.4),
-        "IGA 0/1":  pct(71.4),   // sPGA 0/1 — note: sPGA, not IGA; directionally comparable
+        "IGA 0/1":  pct(71.4),
       },
       placeboMetrics: {
         "PASI 75":  pct(10.7),
@@ -812,19 +813,19 @@ const psoriasis = {
           result: pct(51.9),
           placeboResult: pct(4.0),
           allMetrics: {
-            "sPGA 0/1": pct(69.2),
-            "sPGA 0":   pct(33.7),
-            "PASI 75":  pct(69.2),
-            "PASI 90":  pct(51.9),
-            "PASI 100": pct(25.2),
+            "sPGA 0/1":       pct(69.2),
+            "sPGA 0":         pct(33.7),
+            "PASI 75":        pct(69.2),
+            "PASI 90":        pct(51.9),
+            "PASI 100":       pct(25.2),
             "PASI 75 Week 4": pct(16.8),
           },
           allPlaceboMetrics: {
-            "sPGA 0/1": pct(12.6),
-            "sPGA 0":   pct(1.4),
-            "PASI 75":  pct(12.6),
-            "PASI 90":  pct(4.0),
-            "PASI 100": pct(1.1),
+            "sPGA 0/1":       pct(12.6),
+            "sPGA 0":         pct(1.4),
+            "PASI 75":        pct(12.6),
+            "PASI 90":        pct(4.0),
+            "PASI 100":       pct(1.1),
             "PASI 75 Week 4": pct(4.3),
           },
           activeComparatorMetrics: {
@@ -836,16 +837,17 @@ const psoriasis = {
           },
           publication: "Gooderham M et al. AAD 2026 late-breaking abstract; Takeda press release March 28, 2026",
           year: 2026,
-          note: "Rapidity endpoint: PASI 75 at Week 4 — 16.8% zasocitinib vs 4.3% placebo (p<0.001). >90% of Week 40 PASI 75/90/sPGA 0/1 responders maintained response at Week 60.",
+          note: "Rapidity: PASI 75 at Week 4 — 16.8% vs 4.3% PBO (p<0.001). >90% of Week 40 responders maintained PASI 75/90/sPGA 0/1 at Week 60.",
         },
       ],
-      keyInsight: "Two Phase 3 trials (LATITUDE PsO 3001/3002, n=693 and n=1108) vs placebo and apremilast. sPGA 0/1 ~70% at Week 16; PASI 90 51.9–61.3%; PASI 100 25.2–33.4%. Rapid onset: PASI 75 at Week 4 (16.8% vs 4.3% PBO). Durability: >90% maintained PASI 75/90/sPGA 0/1 at Week 60 among Week 40 responders. NDA submission planned FY2026. Note: uses sPGA (not IGA) as primary — directionally comparable but methodologically distinct from IGA-based trials.",
+      keyInsight: "LATITUDE PsO 3001/3002 (n=693 and n=1108) vs placebo and apremilast. sPGA 0/1 ~70% at Week 16; PASI 90 51.9–61.3%; PASI 100 25.2–33.4%. Rapid onset: PASI 75 at Week 4. Durability: >90% maintained response at Week 60. NDA planned FY2026. Note: primary endpoint is sPGA (not IGA) — directionally comparable but methodologically distinct.",
+      safetySignals: { BBW: "gray", Malignancy: "gray", Infection: "gray", "CV Risk": "gray", Monitoring: "gray", "IBD Risk": "gray" },
       safetyBullets: [
         "TEAEs Week 16: 62.1% zasocitinib vs 46.9% placebo vs 50.5% apremilast",
         "Most common AEs (≥5%): URTI (10.1%), nasopharyngitis (6.2%), acne (6.5%)",
         "Serious TEAEs: 3.0% vs <1% placebo vs 1.5% apremilast",
         "No new safety signals vs Phase 2b; no boxed warning as of press release",
-        ">1-million-fold TYK2 selectivity vs JAK1/2/3 — class risk profile distinct from pan-JAK inhibitors",
+        ">1-million-fold TYK2 selectivity vs JAK1/2/3 — class risk distinct from pan-JAK inhibitors",
       ],
       source: "Takeda press release — LATITUDE PsO 3001 and 3002 Phase 3 results",
       sourceUrl: "https://www.takeda.com/newsroom/newsreleases/2026/zasocitinib-phase3-clinical-trial-results/",
