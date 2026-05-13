@@ -497,17 +497,7 @@ export async function POST(request: NextRequest) {
     const isOralQuery      = inferIsOralQuery(resolvedQuery);
     const isPso            = condition === "Plaque Psoriasis";
     let endpoint           = detectDefaultEndpoint(condition);
-
-    let { approvedDrugs, emergingDrugs, terminatedDrugs } = buildDrugLists(slideData, endpoint);
-    // Only apply oral filter on broad queries — never when a specific non-oral
-    // drug is highlighted (e.g. comparing ORKA-001 to icotrokinra should show both)
-    const hasNonOralHighlight = highlightedDrugs.some((h) => {
-      return !ORAL_TERMS.some((t) => h.toLowerCase().includes(t));
-    });
-    if (isOralQuery && !hasNonOralHighlight) {
-      approvedDrugs   = filterOral(approvedDrugs);
-      emergingDrugs   = filterOral(emergingDrugs);
-      terminatedDrugs = filterOral(terminatedDrugs);
+    
     }
 // auto-select best shared endpoint BEFORE building drug lists
     if (intent === "comparison" && comparisonDrugs.length >= 2) {
