@@ -455,7 +455,7 @@ Score each of these 5 dimensions 1–3 based ONLY on the facts provided:
     1 = novel/unvalidated mechanism with no approved precedent in this indication
 
   D2 PLACEBO-ADJUSTED DELTA
-  Weight this section heavily and also look at past Ph2 studies of the compared drug and determine if it follows a good trend. i.e. if a new drug is compared to an approved drug, find the approved drug Ph2 (do not give me not published data or hallucinate), then look at the approved drug Ph2 data to determine how it compares. 
+  Weight this section heavily and also look at past Ph2 studies of the compared drug and determine if it follows a good trend. i.e. if a new drug is compared to an approved drug, find the approved drug Ph2 (do not give me not published data or hallucinate), then look at the approved drug Ph2 data to determine how it compares. ONLY COMPARE IT TO DRUGS OF THE SAME CLASS. However, if it is a new target with no approved class, then compare it to the best approved therapy. If it is atopic dermatitis, compare it to dupilumab as well as any best appproved therapy. Therefore, for new TYK2 inhibitors, compare it to deucra, not the other class. 
     5 = delta ≥ approved therapies delta in percentage points on primary endpoint. For example, if an approved drug A delta is 10 and the emerging drug delta is 12, this is good. If delta-only disclosure fulfills this, still give it a high schore. 
     3 = delta is ≤10% range of the approved therapies. For example, if an approved drug A delta is 10 and the emerging drug delta is 8, this is score a 2. 
     1 = if delta is unknown, or delta-only disclosure without absolute rates
