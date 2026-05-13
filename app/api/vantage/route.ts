@@ -216,6 +216,15 @@ function detectDefaultEndpoint(condition: string) {
 function metricVal(raw: any, ep: string): number | null {
   if (raw?.metrics?.[ep] !== undefined) return raw.metrics[ep];
   if (raw?.primaryMetric === ep && raw?.primaryMetricValue !== undefined) return raw.primaryMetricValue;
+  // For delta-only assets (e.g. tilrekimig), find the highest delta for this endpoint
+  if (raw?.placeboAdjustedDeltaMetrics) {
+    const epNorm = ep.toLowerCase().replace(/[\s-]/g, "");
+    const vals = Object.entries(raw.placeboAdjustedDeltaMetrics)
+      .filter(([k]) => k.toLowerCase().replace(/[\s-]/g, "").includes(epNorm))
+      .map(([, v]) => v)
+      .filter((v): v is number => typeof v === "number");
+    if (vals.length > 0) return Math.max(...vals);
+  }
   return null;
 }
 
