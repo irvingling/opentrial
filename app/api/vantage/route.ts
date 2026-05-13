@@ -294,7 +294,16 @@ function buildNormalizedDrug(raw: any, ep: string, tier: "approved" | "emerging"
     isDeltaOnly: raw.isDeltaOnly ?? false,
     primaryMetric: raw.primaryMetric ?? null,
     doses: raw.doses ?? null,
-    posEstimate: null, // populated later by AI
+    posEstimate: null,
+    trials: (raw.trials ?? []).map((t: any) => ({
+      name:               t.name ?? "",
+      phase:              t.phase ?? "",
+      n:                  t.n ?? null,
+      comparator:         t.comparator ?? null,
+      timepoint:          t.timepoint ?? null,
+      allMetrics:         t.allMetrics ?? null,
+      allPlaceboMetrics:  t.allPlaceboMetrics ?? null,
+    })),
   };
 }
 
@@ -451,13 +460,41 @@ Respond ONLY with valid JSON (no markdown fences):
   }
 }`;
 
+  // Build an explicit fact block for comparison drugs sourced directly from raw slideData.
+  // This bypasses any normalization issues and guarantees the AI sees the correct numbers.
+  const allRawDrugs = [
+    ...(approvedDrugs),
+    ...(emergingDrugs),
+  ];
+  const comparisonFactsBlock = comparisonDrugs.length >= 2
+    ? `\nCOMPARISON DRUG FACTS (authoritative — use these numbers, do not contradict them):\n` +
+      comparisonDrugs.map((name) => {
+        const drug = allRawDrugs.find((d) => norm(d.name) === norm(name));
+        if (!drug) return `${name}: not found in dataset`;
+        const metricsStr = drug.metrics
+          ? Object.entries(drug.metrics)
+              .map(([k, v]) => v === null
+                ? `${k}: not a reported endpoint in pivotal trials`
+                : `${k}: ${v}%`)
+              .join(", ")
+          : "no normalized metrics";
+        return `${drug.name} (${drug.drugClass}, ${drug.tier}):
+  - Primary endpoint value (${endpoint}): ${drug.metricValue !== null ? `${drug.metricValue}%` : "see allMetrics below"}
+  - All metrics: ${metricsStr || "none in normalized metrics"}
+  - Placebo: ${drug.placeboValue !== null ? `${drug.placeboValue}%` : "not disclosed"}
+  - Timepoint: ${drug.timepoint ?? "not specified"}
+  - Evidence level: ${drug.evidenceLevel}
+  - Numeric disclosure: ${drug.numericDisclosure}`;
+      }).join("\n\n")
+    : "";
+
   const userPrompt = `Query: "${rawQuery}"
 Condition: ${condition} | Intent: ${intent} | Endpoint: ${endpoint} | Oral: ${isOralQuery}
 Highlighted: ${highlightedDrugs.join(", ") || "none"}
 Comparison: ${comparisonDrugs.join(" vs ") || "none"}
-
-REMINDER: Check allMetrics for every drug before writing any bullet. If allMetrics has a number
-for any endpoint, that drug HAS disclosed data — never say otherwise.
+${comparisonFactsBlock}
+CRITICAL: The COMPARISON DRUG FACTS above are authoritative. If a drug appears there with
+numeric values, it HAS data. NEVER say a drug in the comparison block has no data.
 
 APPROVED FACTS:
 ${JSON.stringify(approvedFacts, null, 2)}

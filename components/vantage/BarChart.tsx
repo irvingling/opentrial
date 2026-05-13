@@ -156,7 +156,7 @@ export function BarRow({
       style={{
         marginBottom: pos ? 8 : 14, position: "relative",
         zIndex: hovered ? 99 : ("auto" as any),
-        opacity: dimmed ? 0.55 : 1, transition: "opacity 0.2s",
+        opacity: 1,
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -379,7 +379,7 @@ export function BarSection({
     <div style={{ marginBottom: 24 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
         <div style={{ width: 4, height: 20, borderRadius: 2, background: accentColor, flexShrink: 0 }} />
-        <span style={{ fontSize: 13, fontWeight: 600, color: dimmed ? "#9ca3af" : "#374151" }}>{title}</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{title}</span>
         <span style={{
           fontSize: 11, background: "#f3f4f6", color: "#6b7280",
           padding: "1px 7px", borderRadius: 9999,
@@ -389,11 +389,6 @@ export function BarSection({
             fontSize: 10, background: "#dbeafe", color: "#1d4ed8",
             padding: "1px 7px", borderRadius: 9999,
           }}>{badge}</span>
-        )}
-        {dimmed && (
-          <span style={{ fontSize: 10, color: "#9ca3af", fontStyle: "italic" }}>
-            landscape context
-          </span>
         )}
       </div>
       {bars.map((b, i) => (

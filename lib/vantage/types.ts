@@ -37,6 +37,15 @@ export interface DrugReference {
     source?: string;
   }> | null;
   posEstimate?: PosEstimate | null;  // only set for emerging drugs
+  trials?: Array<{
+    name: string;
+    phase: string;
+    n?: number | null;
+    comparator?: string | null;
+    timepoint?: string | null;
+    allMetrics?: Record<string, number | null> | null;
+    allPlaceboMetrics?: Record<string, number | null> | null;
+  }> | null;
 }
 
 export interface ChartEntry {
