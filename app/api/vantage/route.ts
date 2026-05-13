@@ -10,6 +10,11 @@ type EvidenceLevel =
   | "fda-label" | "publication" | "medical-meeting"
   | "press-release" | "registry-only" | "company-pipeline";
 
+interface PosEstimate {
+  tier: "High" | "Medium" | "Low" | "Insufficient data";
+  riskFactors: string[];
+}
+
 interface DrugReference {
   name: string;
   brandName?: string | null;
@@ -37,6 +42,7 @@ interface DrugReference {
     deltaValue?: number | null; timepoint?: string;
     note?: string; source?: string | null;
   }>;
+  posEstimate?: PosEstimate | null;
 }
 
 interface ReferencesBlock { label: string; url: string; type: string; }
@@ -101,9 +107,7 @@ function expandAliases(query: string): string {
 // ── AI fuzzy drug resolution ──────────────────────────────────────────────────
 
 async function aiResolveDrugNames(
-  rawQuery: string,
-  allDrugNames: string[],
-  client: Anthropic
+  rawQuery: string, allDrugNames: string[], client: Anthropic
 ): Promise<string> {
   try {
     const response = await client.messages.create({
@@ -113,11 +117,9 @@ async function aiResolveDrugNames(
 Given a user query and a list of known drug names, identify any mentions of drugs (by nickname,
 brand name, company name, partial name, or abbreviation) and return the query with those terms
 replaced by the exact canonical drug name from the list.
-
 Rules:
 - Only replace terms that clearly refer to a drug in the list
-- If a company name is used (e.g. "Oruka"), resolve to their drug in the list (e.g. "orka-001")
-- Do not change any other words
+- If a company name is used (e.g. "Oruka"), resolve to their drug (e.g. "orka-001")
 - Return ONLY the rewritten query, nothing else
 - If nothing needs changing, return the original query unchanged`,
       messages: [{
@@ -140,8 +142,8 @@ const CONDITION_HINTS = {
     "atopic dermatitis", "eczema", "atopic", "atd", "easi", "iga", "pp-nrs",
     "dupilumab", "tralokinumab", "lebrikizumab", "nemolizumab",
     "upadacitinib", "abrocitinib", "baricitinib",
-    "tilrekimig", "ompekimig", "amlitelimab", "galvokimig", "pfizer trispecific",
-    "zumilokibart", "afimkibart", "soquelitinib",
+    "tilrekimig", "ompekimig", "amlitelimab", "galvokimig",
+    "zumilokibart", "afimkibart", "soquelitinib", "pfizer trispecific",
   ],
   pso: [
     "psoriasis", "plaque psoriasis", "pso", "pasi",
@@ -175,7 +177,7 @@ function titleCase(name: string) {
   return name.split(" ").map((p) => (p ? p[0].toUpperCase() + p.slice(1) : p)).join(" ");
 }
 
-// ── Inference helpers ─────────────────────────────────────────────────────────
+// ── Inference ─────────────────────────────────────────────────────────────────
 
 function inferCondition(q: string): string {
   const qn = norm(q);
@@ -214,9 +216,22 @@ function detectDefaultEndpoint(condition: string) {
 // ── Data normalisation ────────────────────────────────────────────────────────
 
 function metricVal(raw: any, ep: string): number | null {
-  if (raw?.metrics?.[ep] !== undefined) return raw.metrics[ep];
-  if (raw?.primaryMetric === ep && raw?.primaryMetricValue !== undefined) return raw.primaryMetricValue;
-  // For delta-only assets (e.g. tilrekimig), find the highest delta for this endpoint
+  // 1. Direct metrics object (normalized endpoint keys)
+  if (raw?.metrics?.[ep] !== undefined && raw.metrics[ep] !== null)
+    return raw.metrics[ep];
+
+  // 2. primaryMetric shortcut (for emerging drugs)
+  if (raw?.primaryMetric === ep && raw?.primaryMetricValue !== undefined)
+    return raw.primaryMetricValue;
+
+  // 3. Scan trial allMetrics as fallback (catches approved drugs
+  //    where normalizeApprovedDrug may not have surfaced every endpoint)
+  for (const trial of raw?.trials ?? []) {
+    const v = trial?.allMetrics?.[ep];
+    if (typeof v === "number") return v;
+  }
+
+  // 4. For delta-only assets, find highest delta for this endpoint
   if (raw?.placeboAdjustedDeltaMetrics) {
     const epNorm = ep.toLowerCase().replace(/[\s-]/g, "");
     const vals = Object.entries(raw.placeboAdjustedDeltaMetrics)
@@ -225,11 +240,18 @@ function metricVal(raw: any, ep: string): number | null {
       .filter((v): v is number => typeof v === "number");
     if (vals.length > 0) return Math.max(...vals);
   }
+
   return null;
 }
 
 function placeboVal(raw: any, ep: string): number | null {
-  if (raw?.placeboMetrics?.[ep] !== undefined) return raw.placeboMetrics[ep];
+  if (raw?.placeboMetrics?.[ep] !== undefined && raw.placeboMetrics[ep] !== null)
+    return raw.placeboMetrics[ep];
+  // Fallback: scan trial allPlaceboMetrics
+  for (const trial of raw?.trials ?? []) {
+    const v = trial?.allPlaceboMetrics?.[ep];
+    if (typeof v === "number") return v;
+  }
   return raw?.placeboValue ?? null;
 }
 
@@ -272,6 +294,7 @@ function buildNormalizedDrug(raw: any, ep: string, tier: "approved" | "emerging"
     isDeltaOnly: raw.isDeltaOnly ?? false,
     primaryMetric: raw.primaryMetric ?? null,
     doses: raw.doses ?? null,
+    posEstimate: null, // populated later by AI
   };
 }
 
@@ -334,34 +357,46 @@ function buildFallbackBullets(
   }
   const partial = emergingDrugs.find((d) => d.numericDisclosure === "delta-only");
   if (partial) bullets.push(`${titleCase(partial.name)} has only disclosed placebo-adjusted deltas — absolute rates are not yet public.`);
-  if (condition === "Atopic Dermatitis") {
-    bullets.push("Monotherapy and concomitant-TCS results reflect different patient contexts and cannot be compared directly.");
-  } else {
-    bullets.push("PASI 75, 90, and 100 represent different response depths — endpoint choice matters for competitive assessment.");
-  }
+  bullets.push(condition === "Atopic Dermatitis"
+    ? "Monotherapy and concomitant-TCS results reflect different patient contexts and cannot be compared directly."
+    : "PASI 75, 90, and 100 represent different response depths — endpoint choice matters for competitive assessment.");
   return bullets.slice(0, 4);
 }
 
-// ── AI commentary ─────────────────────────────────────────────────────────────
+// ── AI commentary + POS ───────────────────────────────────────────────────────
 
 async function generateAICommentary(
   rawQuery: string, condition: string, intent: Intent, endpoint: string,
   isOralQuery: boolean, highlightedDrugs: string[], comparisonDrugs: string[],
   approvedDrugs: DrugReference[], emergingDrugs: DrugReference[],
   client: Anthropic
-): Promise<{ ciBullets: string[]; ciCommentary: string; safetyCommentary: string } | null> {
+): Promise<{
+  ciBullets: string[];
+  ciCommentary: string;
+  safetyCommentary: string;
+  posEstimates: Record<string, PosEstimate>;
+} | null> {
 
   const approvedFacts = approvedDrugs.slice(0, 8).map((d) => ({
     name: d.name, brandName: d.brandName, drugClass: d.drugClass,
-    endpoint, value: d.metricValue, placebo: d.placeboValue,
+    primaryEndpoint: endpoint,
+    value: d.metricValue,
+    placebo: d.placeboValue,
+    allMetrics: d.metrics,            // full metrics — check before claiming no data
+    allPlaceboMetrics: d.placeboMetrics,
     timepoint: d.timepoint, evidenceLevel: d.evidenceLevel,
     numericDisclosure: d.numericDisclosure, backgroundTherapy: d.backgroundTherapy,
   }));
 
-  const emergingFacts = emergingDrugs.slice(0, 6).map((d) => ({
-    name: d.name, drugClass: d.drugClass, endpoint,
-    value: d.metricValue, numericDisclosure: d.numericDisclosure,
+  const emergingFacts = emergingDrugs.slice(0, 8).map((d) => ({
+    name: d.name, drugClass: d.drugClass, mechanism: d.mechanism,
+    primaryEndpoint: endpoint,
+    value: d.metricValue,
+    placebo: d.placeboValue,
+    allMetrics: d.metrics,            // full metrics — check before claiming no data
+    numericDisclosure: d.numericDisclosure, evidenceLevel: d.evidenceLevel,
     timepoint: d.timepoint, doses: d.doses?.slice(0, 3) ?? null,
+    isDeltaOnly: d.isDeltaOnly,
   }));
 
   const focusDrugs = [...approvedDrugs, ...emergingDrugs]
@@ -376,37 +411,68 @@ async function generateAICommentary(
   const systemPrompt = `You are a clinical intelligence analyst for a pharma competitive-intelligence platform.
 Write clear, precise commentary based ONLY on the structured facts provided.
 
-STRICT RULES:
+STRICT RULES for commentary:
 1. NEVER invent or estimate any efficacy number not in the facts.
 2. NEVER compare drugs across different endpoints or timepoints without flagging it.
 3. NEVER reference internal decks, AAD, EADV, or ".pptx".
-4. If numericDisclosure is "delta-only", only state placebo-adjusted deltas are public. Never present as absolute.
-5. If numericDisclosure is "none", say data are not yet public.
-6. No "best", "superior", "leading" without head-to-head data in the facts.
-7. ciCommentary only when intent is "comparison". Empty string otherwise.
-8. Write for CSO / medical director audience.
+4. If numericDisclosure is "delta-only", only state placebo-adjusted deltas are public.
+5. CRITICAL — before claiming any drug has "no data" or "data not available", check the
+   allMetrics field. If allMetrics contains ANY numeric value for ANY endpoint, that is
+   real disclosed data. Report it. Never say data are unavailable when allMetrics has numbers.
+6. If value is null for the primaryEndpoint but allMetrics has a value at a related endpoint,
+   state what IS available rather than saying no comparison is possible.
+7. No "best", "superior", "leading" without head-to-head data.
+8. ciCommentary only when intent is "comparison". Empty string otherwise.
+9. Write for CSO / medical director audience.
+
+RULES for POS estimates:
+- Assess each emerging drug's probability of Phase 3 success
+- Use these inputs: mechanism class historical success rates, placebo-adjusted delta size,
+  sample size (infer from n if available, or flag as unknown), endpoint continuity,
+  disclosure quality (evidenceLevel + numericDisclosure), phase of development
+- Tier definitions:
+    High: strong class prior + large delta + adequate n + full disclosure + endpoint continuity
+    Medium: moderate class prior OR limited n OR partial disclosure OR novel mechanism
+    Low: very small n OR no numeric data OR novel unvalidated mechanism OR safety signals
+    Insufficient data: no public efficacy data to assess
+- riskFactors: 3–4 short bullets explaining the specific factors driving the tier
+  e.g. "IL-13 class has ~65% Ph2→Ph3 translation rate in moderate-to-severe AD"
+  e.g. "n=~40 is underpowered for robust efficacy signal; larger Ph2b needed"
+  e.g. "Placebo-adjusted delta of 52.6% is competitive but from a single-arm element"
+  e.g. "Novel IL-13 × IL-17A/F combination has no direct precedent — class risk uncertain"
 
 Respond ONLY with valid JSON (no markdown fences):
-{"ciBullets":["...","...","...","..."],"ciCommentary":"...","safetyCommentary":"..."}`;
+{
+  "ciBullets": ["...","...","...","..."],
+  "ciCommentary": "...",
+  "safetyCommentary": "...",
+  "posEstimates": {
+    "drugName": { "tier": "High|Medium|Low|Insufficient data", "riskFactors": ["...","...","..."] }
+  }
+}`;
 
   const userPrompt = `Query: "${rawQuery}"
 Condition: ${condition} | Intent: ${intent} | Endpoint: ${endpoint} | Oral: ${isOralQuery}
 Highlighted: ${highlightedDrugs.join(", ") || "none"}
 Comparison: ${comparisonDrugs.join(" vs ") || "none"}
 
+REMINDER: Check allMetrics for every drug before writing any bullet. If allMetrics has a number
+for any endpoint, that drug HAS disclosed data — never say otherwise.
+
 APPROVED FACTS:
 ${JSON.stringify(approvedFacts, null, 2)}
 
-EMERGING FACTS:
+EMERGING FACTS (generate posEstimates for each of these):
 ${JSON.stringify(emergingFacts, null, 2)}
 
 SAFETY FACTS:
 ${JSON.stringify(safetyFacts, null, 2)}
 
 Write:
-- ciBullets: 3–4 bullets. Lead with the most clinically relevant insight. Mention specific drug names and numbers where disclosed. Complete actionable sentences.
-- ciCommentary: Only if comparison intent — 2–3 sentences with caveats about cross-trial limits. Empty string otherwise.
-- safetyCommentary: 1–2 sentences on mechanism-class safety differences.`;
+- ciBullets: 3–4 bullets. Lead with most clinically relevant insight. Specific drug names and numbers where disclosed.
+- ciCommentary: Only if comparison intent — 2–3 sentences with cross-trial caveats. Empty string otherwise.
+- safetyCommentary: 1–2 sentences on mechanism-class safety differences.
+- posEstimates: one entry per emerging drug listed above.`;
 
   try {
     const response = await client.messages.create({
@@ -418,10 +484,12 @@ Write:
     const text = response.content.filter((b) => b.type === "text").map((b) => (b as any).text).join("");
     const clean = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const parsed = JSON.parse(clean);
+
     return {
       ciBullets:        Array.isArray(parsed.ciBullets) ? parsed.ciBullets.slice(0, 4) : [],
       ciCommentary:     typeof parsed.ciCommentary === "string" ? parsed.ciCommentary : "",
       safetyCommentary: typeof parsed.safetyCommentary === "string" ? parsed.safetyCommentary : "",
+      posEstimates:     typeof parsed.posEstimates === "object" ? parsed.posEstimates : {},
     };
   } catch {
     return null;
@@ -450,17 +518,13 @@ export async function POST(request: NextRequest) {
     const emergingNames: string[] = (slideData?.emerging?.drugs ?? slideData?.emerging ?? []).map((d: any) => d.name);
     const allDrugNames = [...approvedNames, ...emergingNames];
 
-    // Step 3: AI fuzzy resolution if needed
+    // Step 3: AI fuzzy resolution only if static expansion didn't find any drugs
     const staticMatched = extractHighlightedDrugs(aliasExpanded, allDrugNames);
     const hasComparisonWords = [" vs ", " versus ", "compare ", "against ", "how does"].some(
       (w) => aliasExpanded.toLowerCase().includes(w)
     );
     let resolvedQuery = aliasExpanded;
-    // Only call AI resolution if static expansion didn't already resolve at least one drug
-    // AND the query has comparison intent. Never call it if static already found matches —
-    // the AI may override correct static resolutions with wrong training-data associations.
-    const alreadyResolved = staticMatched.length >= 1;
-    if (hasComparisonWords && !alreadyResolved) {
+    if (hasComparisonWords && staticMatched.length === 0) {
       resolvedQuery = await aiResolveDrugNames(rawQuery, allDrugNames, client);
       resolvedQuery = expandAliases(resolvedQuery);
     }
@@ -474,8 +538,7 @@ export async function POST(request: NextRequest) {
     const isPso            = condition === "Plaque Psoriasis";
     let endpoint           = detectDefaultEndpoint(condition);
 
-    // Step 5: Auto-select best shared endpoint for comparison queries
-    // Do this BEFORE buildDrugLists so numericDisclosure is computed correctly
+    // Step 5: Auto-select best shared endpoint BEFORE building drug lists
     if (intent === "comparison" && comparisonDrugs.length >= 2) {
       const preferred = isPso
         ? ["PASI 100", "PASI 90", "PASI 75", "IGA 0/1"]
@@ -495,11 +558,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 6: Build drug lists with the correct endpoint
+    // Step 6: Build drug lists with correct endpoint
     let { approvedDrugs, emergingDrugs, terminatedDrugs } = buildDrugLists(slideData, endpoint);
 
-    // Only apply oral filter on broad queries — don't drop non-oral drugs
-    // when a specific non-oral drug is part of a comparison
     const hasNonOralHighlight = highlightedDrugs.some((h) =>
       !ORAL_TERMS.some((t) => h.toLowerCase().includes(t))
     );
@@ -522,10 +583,25 @@ export async function POST(request: NextRequest) {
       .flatMap((d) => d.safetyBullets.slice(0, 2).map((b) => `${titleCase(d.name)}: ${b}`))
       .slice(0, 6);
 
+    // Step 7: AI commentary + POS estimates in one call
     const aiResult = await generateAICommentary(
       rawQuery, condition, intent, endpoint, isOralQuery,
       highlightedDrugs, comparisonDrugs, approvedDrugs, emergingDrugs, client
     );
+
+    // Attach POS estimates to emerging drug objects
+    if (aiResult?.posEstimates) {
+      for (const drug of emergingDrugs) {
+        const pos = aiResult.posEstimates[drug.name] ??
+          // Try case-insensitive match
+          Object.entries(aiResult.posEstimates).find(
+            ([k]) => norm(k) === norm(drug.name)
+          )?.[1];
+        if (pos && typeof pos.tier === "string" && Array.isArray(pos.riskFactors)) {
+          drug.posEstimate = { tier: pos.tier as PosEstimate["tier"], riskFactors: pos.riskFactors };
+        }
+      }
+    }
 
     const ciBullets = aiResult?.ciBullets.length
       ? aiResult.ciBullets

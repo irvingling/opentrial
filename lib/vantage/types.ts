@@ -1,5 +1,9 @@
 // lib/vantage/types.ts
-// Shared interfaces used across all Vantage components and helpers.
+
+export interface PosEstimate {
+  tier: "High" | "Medium" | "Low" | "Insufficient data";
+  riskFactors: string[];  // 2–4 bullet points explaining the assessment
+}
 
 export interface DrugReference {
   name: string;
@@ -32,6 +36,7 @@ export interface DrugReference {
     note?: string;
     source?: string;
   }> | null;
+  posEstimate?: PosEstimate | null;  // only set for emerging drugs
 }
 
 export interface ChartEntry {

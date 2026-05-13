@@ -49,6 +49,9 @@ function VantageInner() {
   const [vantageData, setVantageData] = useState<any>(() => readAndClearCache(query));
   const [loading,     setLoading]     = useState(false);
 
+  // Always scroll to top when this page mounts
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+
   const [selectedEndpoint,  setSelectedEndpoint]  = useState("");
   const [chartView,         setChartView]         = useState<ChartView>("bar");
   const [viewMode,          setViewMode]          = useState<ViewMode>("absolute");
