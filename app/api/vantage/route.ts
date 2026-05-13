@@ -481,14 +481,21 @@ Total score → tier:
   5–8   = Low
   Cannot score (missing ≥3 dimensions) = Insufficient data
 
+CRITICAL: After computing the total score, set tier to exactly the bracket above.
+Do NOT adjust tier based on qualitative judgment. The score IS the tier.
+If score=10, tier=Medium. Always. Even if the drug looks promising.
+
 For each drug output:
 - tier: the tier from the rubric above
 - score: the total numeric score (integer)
-- dimensionScores: { D1, D2, D3, D4, D5 } each as integer 1–3
+- dimensionScores: { D1, D2, D3, D4, D5 } each as integer 1–3 (or 1-5 as in D2)
 - riskFactors: 3–4 bullets explaining the dimension scores in plain clinical language
   e.g. "IL-23p19 class prior: strong — risankizumab and guselkumab both successful in Ph3 (D1: 3)"
   e.g. "Sample size: Ph2a n=84, single-arm elements — insufficient for robust signal (D3: 1)"
   e.g. "Disclosure: sponsor press release only, no placebo data published (D5: 1)"
+
+Before outputting, verify: does my tier match my score?
+If tier says "High" but score is 10, that is wrong — set tier to "Medium".
 
 Respond ONLY with valid JSON (no markdown fences):
 {
