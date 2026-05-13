@@ -498,7 +498,7 @@ export async function POST(request: NextRequest) {
     const isPso            = condition === "Plaque Psoriasis";
     let endpoint           = detectDefaultEndpoint(condition);
     
-    }
+    try {
 // auto-select best shared endpoint BEFORE building drug lists
     if (intent === "comparison" && comparisonDrugs.length >= 2) {
       const isPso = condition === "Plaque Psoriasis";
