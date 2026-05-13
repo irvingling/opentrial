@@ -52,10 +52,9 @@ interface VantageResponse {
   suggestTrialMatch: boolean;
 }
 
-// ── Static alias map (fast, no API call needed) ───────────────────────────────
+// ── Static alias map ──────────────────────────────────────────────────────────
 
 const DRUG_ALIASES: Record<string, string> = {
-  // AtD approved
   "dupi": "dupilumab", "dupixent": "dupilumab",
   "nemo": "nemolizumab", "nemluvio": "nemolizumab",
   "tralo": "tralokinumab", "adbry": "tralokinumab", "adtralza": "tralokinumab",
@@ -63,7 +62,6 @@ const DRUG_ALIASES: Record<string, string> = {
   "upa": "upadacitinib", "rinvoq": "upadacitinib",
   "abro": "abrocitinib", "cibinqo": "abrocitinib",
   "bari": "baricitinib", "olumiant": "baricitinib",
-  // AtD emerging
   "amlit": "amlitelimab",
   "tilrek": "tilrekimig", "pfizer tri": "tilrekimig", "pfizer trispecific": "tilrekimig",
   "ompe": "ompekimig",
@@ -71,7 +69,6 @@ const DRUG_ALIASES: Record<string, string> = {
   "zumilo": "zumilokibart", "apg777": "zumilokibart",
   "afimk": "afimkibart", "rg6299": "afimkibart",
   "soquel": "soquelitinib",
-  // Psoriasis approved
   "risa": "risankizumab", "skyrizi": "risankizumab",
   "guse": "guselkumab", "tremfya": "guselkumab",
   "tildr": "tildrakizumab", "ilumya": "tildrakizumab",
@@ -83,7 +80,6 @@ const DRUG_ALIASES: Record<string, string> = {
   "aprem": "apremilast", "otezla": "apremilast",
   "uste": "ustekinumab", "stelara": "ustekinumab",
   "icot": "icotrokinra", "icotyde": "icotrokinra",
-  // Psoriasis emerging
   "zaso": "zasocitinib",
   "envu": "envudeucitinib",
   "orka": "orka-001", "oruka": "orka-001",
@@ -93,7 +89,6 @@ const DRUG_ALIASES: Record<string, string> = {
 
 function expandAliases(query: string): string {
   let q = query.toLowerCase();
-  // Sort by length descending so longer aliases match before shorter substrings
   const sorted = Object.entries(DRUG_ALIASES).sort((a, b) => b[0].length - a[0].length);
   for (const [alias, canonical] of sorted) {
     const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -104,9 +99,6 @@ function expandAliases(query: string): string {
 }
 
 // ── AI fuzzy drug resolution ──────────────────────────────────────────────────
-// Called when the static alias map doesn't resolve all drug mentions.
-// Asks Claude to map informal/partial names → canonical names from the drug list.
-// Returns expanded query string, or original if resolution fails.
 
 async function aiResolveDrugNames(
   rawQuery: string,
@@ -130,20 +122,14 @@ Rules:
 - If nothing needs changing, return the original query unchanged`,
       messages: [{
         role: "user",
-        content: `Query: "${rawQuery}"
-
-Known drug names: ${allDrugNames.join(", ")}
-
-Return the rewritten query:`
-      }]
+        content: `Query: "${rawQuery}"\n\nKnown drug names: ${allDrugNames.join(", ")}\n\nReturn the rewritten query:`,
+      }],
     });
-
     const resolved = (response.content[0] as any)?.text?.trim() ?? rawQuery;
-    // Sanity check: result should be roughly similar length to input
     if (resolved.length > rawQuery.length * 3) return rawQuery;
     return resolved;
   } catch {
-    return rawQuery; // fall back to original on any error
+    return rawQuery;
   }
 }
 
@@ -189,7 +175,7 @@ function titleCase(name: string) {
   return name.split(" ").map((p) => (p ? p[0].toUpperCase() + p.slice(1) : p)).join(" ");
 }
 
-// ── Inference ─────────────────────────────────────────────────────────────────
+// ── Inference helpers ─────────────────────────────────────────────────────────
 
 function inferCondition(q: string): string {
   const qn = norm(q);
@@ -303,22 +289,6 @@ function filterOral(drugs: DrugReference[]) {
   });
 }
 
-function sameEndpointComparable(a: DrugReference, b: DrugReference) {
-  if (a.metricLabel !== b.metricLabel) return false;
-  if (!a.timepoint || !b.timepoint) return false;
-  const tA = norm(a.timepoint), tB = norm(b.timepoint);
-  const sameWeek = tA === tB ||
-    (tA.includes("week 16") && tB.includes("week 16")) ||
-    (tA.includes("week 12") && tB.includes("week 12"));
-  if (!sameWeek) return false;
-  const bgA = norm(a.backgroundTherapy), bgB = norm(b.backgroundTherapy);
-  const aMono = bgA === "" || bgA.includes("monotherapy");
-  const bMono = bgB === "" || bgB.includes("monotherapy");
-  const bothTcs = (bgA.includes("tcs") || bgA.includes("tci")) &&
-    (bgB.includes("tcs") || bgB.includes("tci"));
-  return (aMono && bMono) || bothTcs;
-}
-
 function collectReferences(drugs: DrugReference[]): ReferencesBlock[] {
   const seen = new Set<string>();
   return drugs.filter((d) => d.sourceUrl).map((d) => ({
@@ -348,7 +318,6 @@ function buildFallbackBullets(
     ? all.filter((d) => highlightedDrugs.some((h) => norm(h) === norm(d.name)))
     : approvedDrugs.filter((d) => typeof d.metricValue === "number")
         .sort((a, b) => (b.metricValue ?? 0) - (a.metricValue ?? 0)).slice(0, 2);
-
   const lead = focus[0];
   if (lead?.metricValue != null) {
     const tp = lead.timepoint ? ` at ${lead.timepoint}` : "";
@@ -437,11 +406,9 @@ Write:
       messages: [{ role: "user", content: userPrompt }],
       system: systemPrompt,
     });
-
     const text = response.content.filter((b) => b.type === "text").map((b) => (b as any).text).join("");
     const clean = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const parsed = JSON.parse(clean);
-
     return {
       ciBullets:        Array.isArray(parsed.ciBullets) ? parsed.ciBullets.slice(0, 4) : [],
       ciCommentary:     typeof parsed.ciCommentary === "string" ? parsed.ciCommentary : "",
@@ -462,10 +429,10 @@ export async function POST(request: NextRequest) {
 
     const client = new Anthropic();
 
-    // Step 1: Static alias expansion (fast, no API cost)
+    // Step 1: Static alias expansion
     const aliasExpanded = expandAliases(rawQuery);
 
-    // Step 2: Determine condition so we can build the drug list
+    // Step 2: Condition + drug name list
     const conditionGuess = inferCondition(aliasExpanded);
     const slideData = getSlideEvidence(conditionGuess) ?? getSlideEvidence(aliasExpanded);
     if (!slideData) return NextResponse.json({ error: "No slideData found." }, { status: 404 });
@@ -474,22 +441,18 @@ export async function POST(request: NextRequest) {
     const emergingNames: string[] = (slideData?.emerging?.drugs ?? slideData?.emerging ?? []).map((d: any) => d.name);
     const allDrugNames = [...approvedNames, ...emergingNames];
 
-    // Step 3: Check if static expansion resolved all drug mentions
-    // If the query still contains unmatched drug-like terms, use AI to resolve
+    // Step 3: AI fuzzy resolution if needed
     const staticMatched = extractHighlightedDrugs(aliasExpanded, allDrugNames);
     const hasComparisonWords = [" vs ", " versus ", "compare ", "against ", "how does"].some(
       (w) => aliasExpanded.toLowerCase().includes(w)
     );
-    const needsAIResolution = hasComparisonWords && staticMatched.length < 2;
-
     let resolvedQuery = aliasExpanded;
-    if (needsAIResolution) {
+    if (hasComparisonWords && staticMatched.length < 2) {
       resolvedQuery = await aiResolveDrugNames(rawQuery, allDrugNames, client);
-      // Re-run alias expansion on the AI-resolved query in case it used informal names
       resolvedQuery = expandAliases(resolvedQuery);
     }
 
-    // Step 4: Final inference on the fully resolved query
+    // Step 4: Final inference
     const condition        = inferCondition(resolvedQuery);
     const intent           = inferIntent(resolvedQuery, allDrugNames);
     const highlightedDrugs = extractHighlightedDrugs(resolvedQuery, allDrugNames);
@@ -497,11 +460,10 @@ export async function POST(request: NextRequest) {
     const isOralQuery      = inferIsOralQuery(resolvedQuery);
     const isPso            = condition === "Plaque Psoriasis";
     let endpoint           = detectDefaultEndpoint(condition);
-    
-    try {
-// auto-select best shared endpoint BEFORE building drug lists
+
+    // Step 5: Auto-select best shared endpoint for comparison queries
+    // Do this BEFORE buildDrugLists so numericDisclosure is computed correctly
     if (intent === "comparison" && comparisonDrugs.length >= 2) {
-      const isPso = condition === "Plaque Psoriasis";
       const preferred = isPso
         ? ["PASI 100", "PASI 90", "PASI 75", "IGA 0/1"]
         : ["EASI-75", "EASI-90", "IGA 0/1", "PP-NRS ≥4"];
@@ -520,8 +482,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // NOW build drug lists with the correct endpoint
+    // Step 6: Build drug lists with the correct endpoint
     let { approvedDrugs, emergingDrugs, terminatedDrugs } = buildDrugLists(slideData, endpoint);
+
+    // Only apply oral filter on broad queries — don't drop non-oral drugs
+    // when a specific non-oral drug is part of a comparison
     const hasNonOralHighlight = highlightedDrugs.some((h) =>
       !ORAL_TERMS.some((t) => h.toLowerCase().includes(t))
     );
@@ -530,6 +495,7 @@ export async function POST(request: NextRequest) {
       emergingDrugs   = filterOral(emergingDrugs);
       terminatedDrugs = filterOral(terminatedDrugs);
     }
+
     const guidelineSummary = buildGuidelineSummary(condition, isOralQuery);
     const references       = collectReferences([...approvedDrugs, ...emergingDrugs, ...terminatedDrugs]);
 
